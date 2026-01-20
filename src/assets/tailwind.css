@@ -1,0 +1,102 @@
+﻿@import 'tailwindcss';
+
+/* === Base: ฟอนต์ / สีพื้นหลัง / focus ring === */
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+  body {
+    @apply bg-slate-50 text-slate-800;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-indigo-400 ring-offset-2 ring-offset-white;
+  }
+}
+
+/* === Components: utility ชุดใช้งานซ้ำ (ไม่ @apply class ที่เราตั้งเอง) === */
+@layer components {
+  /* --- Card --- */
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+  .card-header {
+    @apply px-4 py-3 border-b border-slate-200 font-semibold text-slate-800;
+  }
+  .card-body {
+    @apply p-4;
+  }
+  .card-footer {
+    @apply px-4 py-3 border-t border-slate-200;
+  }
+
+  /* --- Button (base + variants) --- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md
+           border px-3 py-1.5 text-sm transition;
+  }
+  .btn-primary {
+    /* ห้าม @apply btn; ให้ใส่ utility ซ้ำ */
+    @apply inline-flex items-center justify-center gap-2 rounded-md
+           border px-3 py-1.5 text-sm transition
+           border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-md
+           border px-3 py-1.5 text-sm transition
+           border-slate-300 bg-white hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-md
+           border px-3 py-1.5 text-sm transition
+           border-rose-500 bg-rose-500 text-white hover:bg-rose-600;
+  }
+  .btn-disabled {
+    @apply border-slate-300 bg-slate-100 text-slate-400 cursor-not-allowed;
+  }
+
+  /* --- Input / Select --- */
+  .input {
+    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder-slate-400 shadow-sm;
+  }
+  .select {
+    @apply rounded-md border border-slate-300 bg-white px-2 py-2 text-sm shadow-sm;
+  }
+
+  /* --- Badge --- */
+  .badge {
+    @apply inline-block rounded-full border px-2.5 py-[2px] text-xs;
+  }
+  .badge-green {
+    @apply inline-block rounded-full border px-2.5 py-[2px] text-xs border-emerald-300 bg-emerald-100 text-emerald-800;
+  }
+  .badge-amber {
+    @apply inline-block rounded-full border px-2.5 py-[2px] text-xs border-amber-300  bg-amber-100  text-amber-800;
+  }
+
+  /* --- Chip summary --- */
+  .chip {
+    @apply inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm;
+  }
+
+  /* --- Table (ห้าม @apply card; ใส่เอง) --- */
+  .table-wrap {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden;
+  }
+  .table {
+    @apply w-full border-collapse;
+  }
+  .thead {
+    @apply bg-slate-50 sticky top-0 z-10;
+  }
+  .th {
+    @apply px-3 py-3 border-b text-left text-slate-600;
+  }
+  .td {
+    @apply px-3 py-2 border-b;
+  }
+  .tr {
+    @apply even:bg-slate-50/40 hover:bg-slate-50 transition;
+  }
+}

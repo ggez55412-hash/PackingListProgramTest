@@ -1,0 +1,11 @@
+{
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "include": ["env.d.ts", "src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "types": ["vue"],
+    "paths": { "@/*": ["./src/*"] },
+    "skipLibCheck": true,
+    "isolatedModules": true
+  }
+}

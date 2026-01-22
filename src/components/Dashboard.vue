@@ -259,7 +259,6 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
 
     <!-- Filters -->
     <div class="group-box">
-      <div class="group-head">ค้นหา</div>
       <div class="group-body">
         <FiltersBar
           :transporters="allTransporters"

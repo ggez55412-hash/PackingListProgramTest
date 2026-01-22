@@ -1,18 +1,16 @@
+
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { ShipmentStatus } from '@/types/order'
 import { parseCSV, toCSV } from '@/utils/csv'
 
-const props = withDefaults(
-  defineProps<{
-    transporters: string[]
-    exportRows?: any[]
-  }>(),
-  {
-    transporters: () => [],
-    exportRows: undefined,
-  },
-)
+const props = withDefaults(defineProps<{
+  transporters: string[]
+  exportRows?: any[]
+}>(), {
+  transporters: () => [],
+  exportRows: undefined
+})
 
 const emit = defineEmits<{
   (e: 'update:keyword', v: string): void
@@ -25,9 +23,9 @@ const keyword = ref<string>('')
 const status = ref<'ALL' | ShipmentStatus>('ALL')
 const transporter = ref<'ALL' | string>('ALL')
 
-watch(keyword, (v) => emit('update:keyword', v))
-watch(status, (v) => emit('update:status', v))
-watch(transporter, (v) => emit('update:transporter', v))
+watch(keyword, v => emit('update:keyword', v))
+watch(status, v => emit('update:status', v))
+watch(transporter, v => emit('update:transporter', v))
 
 const fileEl = ref<HTMLInputElement | null>(null)
 const isImporting = ref(false)
@@ -118,14 +116,10 @@ function onExport(): void {
 
     <div class="ml-auto flex items-center gap-2">
       <input type="file" ref="fileEl" class="hidden" accept=".csv,text/csv" @change="onFile" />
-      <button class="btn btn-ghost" :disabled="isImporting" @click="browseCsv">
+      <button class="btn btn-primary" :disabled="isImporting" @click="browseCsv">
         {{ isImporting ? 'กำลังนำเข้า...' : 'Import CSV' }}
       </button>
-      <button
-        class="btn btn-ghost"
-        :disabled="isExporting || !props.exportRows?.length"
-        @click="onExport"
-      >
+      <button class="btn bg-green-500 text-white hover:bg-green-600" :disabled="isExporting || !props.exportRows?.length" @click="onExport">
         {{ isExporting ? 'กำลังส่งออก...' : 'Export CSV' }}
       </button>
     </div>

@@ -131,8 +131,15 @@ const editingRow = ref<number | null>(null)
 const editBuffer = ref<string>(''),
   weightInputs = ref<Record<number, HTMLInputElement | null>>({}),
   weightError = ref<string>('')
-function formatWeight(n?: number) {
-  return n == null || Number.isNaN(n) ? '' : n.toFixed(2)
+function formatWeight(n?: number | string) {
+  // 1. ตรวจสอบว่าเป็นค่าว่างหรือไม่
+  if (n == null || n === '') return ''
+  
+  // 2. แปลงค่าเป็น Number เพื่อความปลอดภัย (เผื่อกรณีข้อมูลเป็น string)
+  const num = Number(n)
+  
+  // 3. ตรวจสอบว่าแปลงสำเร็จหรือไม่ (ไม่ใช่ NaN) ก่อนใช้ toFixed
+  return Number.isNaN(num) ? '' : num.toFixed(2)
 }
 function parseWeight(input: string): number | null {
   const s = input.replace(',', '.').replace(/[^\d.]/g, '')
@@ -253,7 +260,7 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
         Shipped: <b>{{ summary.shipped }}</b>
       </div>
       <div class="chip">
-        Total Weight: <b>{{ summary.weight.toFixed(2) }}</b> kg
+        Total Weight: {{ Number(summary.weight ?? 0).toFixed(2) }} kg
       </div>
     </div>
 

@@ -1,3 +1,4 @@
+
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
 import dayjs from 'dayjs'
@@ -42,11 +43,12 @@ const allTransporters = computed(() => {
 })
 
 const filtered = computed<OrderRow[]>(() => {
+  // TIP: ถ้ามี store.active ให้เปลี่ยนเป็น rows = store.active.slice()
   let rows = store.orders.slice()
   const kw = keyword.value.trim().toLowerCase()
   if (kw)
     rows = rows.filter(
-      (r) => r.orderId.toLowerCase().includes(kw) || r.customer.toLowerCase().includes(kw),
+      (r) => r.orderId.toLowerCase().includes(kw) || (r.customer || '').toLowerCase().includes(kw),
     )
   if (statusFilter.value !== 'ALL') rows = rows.filter((r) => r.status === statusFilter.value)
   if (transporterFilter.value !== 'ALL')
@@ -93,7 +95,7 @@ function toggleSelect(id: string) {
   else selectedIds.value.add(id)
 }
 
-/* ---------- dialog ---------- */
+/* ---------- update dialog ---------- */
 const showDialog = ref(false),
   selectedRow = ref<OrderRow | null>(null)
 function openUpdate(row: OrderRow) {
@@ -105,7 +107,7 @@ function onSave(updated: OrderRow) {
   success(`บันทึกออเดอร์ ${updated.orderId} สำเร็จ`)
 }
 
-/* ---------- confirm bulk ---------- */
+/* ---------- confirm bulk (shipped) ---------- */
 const showConfirm = ref(false)
 const showUndo = ref(false)
 function openConfirmShipped() {
@@ -119,15 +121,9 @@ function doMarkShipped() {
   success(`ทำเครื่องหมาย Shipped จำนวน ${ids.length} แถว`)
 }
 
-
-/* ---------- delete with ConfirmDialog (แนวเร็ว) ---------- */
+/* ---------- delete with ConfirmDialog (bulk only) ---------- */
 const showConfirmDelete = ref(false)
 const pendingDeleteIds = ref<string[]>([])
-
-function openConfirmDeleteOne(orderId: string) {
-  pendingDeleteIds.value = [orderId]
-  showConfirmDelete.value = true
-}
 
 function openConfirmDeleteSelected() {
   if (selectedIds.value.size === 0) return
@@ -141,6 +137,7 @@ function doDeleteConfirmed() {
     return
   }
   if (pendingDeleteIds.value.length === 1) {
+    // เผื่อกรณีเลือกไว้ 1 แถว
     const id = pendingDeleteIds.value[0]!
     store.deleteOne(id)
     success(`ลบออเดอร์ #${id} แล้ว (Undo ได้)`)
@@ -148,18 +145,11 @@ function doDeleteConfirmed() {
     store.deleteMany(pendingDeleteIds.value)
     success(`ลบ ${pendingDeleteIds.value.length} รายการแล้ว (Undo ได้)`)
   }
-  // เคลียร์ selection และปิด dialog
   pendingDeleteIds.value = []
   selectedIds.value.clear()
   showConfirmDelete.value = false
-}
 
-
-function onDeleteSelected() {
-  if (selectedIds.value.size === 0) return
-  if (!confirm(`ลบ ${selectedIds.value.size} รายการใช่ไหม?`)) return
-  store.deleteMany(Array.from(selectedIds.value))
-  selectedIds.value.clear()
+  // แสดง Undo 5 วิ
   showUndo.value = true
   setTimeout(() => (showUndo.value = false), 5000)
 }
@@ -182,14 +172,10 @@ const editingRow = ref<number | null>(null)
 const editBuffer = ref<string>(''),
   weightInputs = ref<Record<number, HTMLInputElement | null>>({}),
   weightError = ref<string>('')
+
 function formatWeight(n?: number | string) {
-  // 1. ตรวจสอบว่าเป็นค่าว่างหรือไม่
   if (n == null || n === '') return ''
-  
-  // 2. แปลงค่าเป็น Number เพื่อความปลอดภัย (เผื่อกรณีข้อมูลเป็น string)
   const num = Number(n)
-  
-  // 3. ตรวจสอบว่าแปลงสำเร็จหรือไม่ (ไม่ใช่ NaN) ก่อนใช้ toFixed
   return Number.isNaN(num) ? '' : num.toFixed(2)
 }
 function parseWeight(input: string): number | null {
@@ -349,7 +335,7 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
       </div>
     </div>
 
-    <!-- Table (มีแค่ “ชุดเดียว”) -->
+    <!-- Table -->
     <div class="table-wrap">
       <div class="card-header">Finish Goods &amp; Shipments</div>
       <div class="card-body p-0">
@@ -365,32 +351,25 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
               </th>
               <th class="th cursor-pointer" @click="onSort('orderId')">
                 <span class="font-semibold">Order ID</span>
-                <span class="text-xs text-slate-500" v-if="sortKey === 'orderId'"
-                  >({{ sortDir }})</span
-                >
+                <span class="text-xs text-slate-500" v-if="sortKey === 'orderId'">({{ sortDir }})</span>
               </th>
               <th class="th cursor-pointer" @click="onSort('customer')">
                 Customer
-                <span class="text-xs text-slate-500" v-if="sortKey === 'customer'"
-                  >({{ sortDir }})</span
-                >
+                <span class="text-xs text-slate-500" v-if="sortKey === 'customer'">({{ sortDir }})</span>
               </th>
               <th class="th">Status</th>
               <th class="th">Transporter</th>
               <th class="th">Parcel No.</th>
               <th class="th cursor-pointer" @click="onSort('deliveryDate')">
                 Delivery Date
-                <span class="text-xs text-slate-500" v-if="sortKey === 'deliveryDate'"
-                  >({{ sortDir }})</span
-                >
+                <span class="text-xs text-slate-500" v-if="sortKey === 'deliveryDate'">({{ sortDir }})</span>
               </th>
               <th class="th cursor-pointer w-[140px]" @click="onSort('weightKg')">
                 Weight (kg)
-                <span class="text-xs text-slate-500" v-if="sortKey === 'weightKg'"
-                  >({{ sortDir }})</span
-                >
+                <span class="text-xs text-slate-500" v-if="sortKey === 'weightKg'">({{ sortDir }})</span>
               </th>
-              <th class="th w-[110px]">Action</th>
+              <!-- ✅ ทำให้ Action กว้างพอและคงที่ -->
+              <th class="th w-[100px] min-w-[100px] text-center">Action</th>
             </tr>
           </thead>
 
@@ -406,18 +385,15 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
               <td class="td font-semibold text-slate-800">{{ r.orderId }}</td>
               <td class="td">{{ r.customer }}</td>
               <td class="td">
-                <span :class="r.status === 'Pending' ? 'badge-amber' : 'badge-green'">{{
-                  r.status
-                }}</span>
+                <span :class="r.status === 'Pending' ? 'badge-amber' : 'badge-green'">{{ r.status }}</span>
               </td>
               <td class="td">{{ r.transporter || '' }}</td>
               <td class="td">{{ r.parcelNo || '' }}</td>
               <td class="td">{{ r.deliveryDate || '' }}</td>
 
-              <!-- น้ำหนักแบบ Excel-like -->
-
+              <!-- Weight cell (Excel-like) -->
               <td class="td align-top">
-                <!-- โหมดดู -->
+                <!-- View mode -->
                 <div
                   v-if="editingRow !== store.orders.findIndex((o) => o.orderId === r.orderId)"
                   class="min-h-[32px] flex items-center cursor-text hover:bg-slate-100 rounded px-1"
@@ -426,8 +402,7 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
                 >
                   {{ formatWeight(r.weightKg) }}
                 </div>
-
-                <!-- โหมดแก้ไข -->
+                <!-- Edit mode -->
                 <div v-else>
                   <input
                     :ref="
@@ -461,18 +436,21 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
                   <div v-if="weightError" class="text-rose-600 text-sm mt-1">{{ weightError }}</div>
                 </div>
               </td>
-              
+
+              <!-- ✅ Action: เหลือเฉพาะปุ่ม Update และกัน wrap -->
               <td class="td">
-                <button
-                  type="button"
-                  @click="openUpdate(r)"
-                  :disabled="r.status === 'Shipped'"
-                  :class="['btn', r.status === 'Shipped' ? 'btn-disabled' : 'btn-ghost']"
-                >
-                  {{ r.status === 'Shipped' ? 'Disable' : 'Update' }}
-                </button>
+                <div class="flex items-center justify-end gap-2 flex-nowrap whitespace-nowrap">
+                  <button
+                    type="button"
+                    @click="openUpdate(r)"
+                    :disabled="r.status === 'Shipped'"
+                    :class="['btn btn-sm', r.status === 'Shipped' ? 'btn-disabled' : 'btn-ghost']"
+                    title="Update"
+                  >
+                    {{ r.status === 'Shipped' ? 'Disable' : 'Update' }}
+                  </button>
+                </div>
               </td>
-              
             </tr>
           </tbody>
         </table>
@@ -480,43 +458,33 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
 
       <!-- Bulk actions -->
       <div class="card-footer">
-        <button
-          class="btn btn-ghost"
-          :disabled="selectedIds.size === 0"
-          @click="openConfirmShipped"
-        >
-          Mark as Shipped ({{ selectedIds.size }})
-        </button>
-        
-<!-- ✅ ลบหลายรายการ -->
-  <button
-    class="btn btn-ghost"
-    :disabled="selectedIds.size === 0"
-    @click="onDeleteSelected"
-  >
-    Select Delete ({{ selectedIds.size }})
-  </button>
+        <div class="flex items-center gap-3 flex-wrap">
+          <button
+            class="btn btn-ghost"
+            :disabled="selectedIds.size === 0"
+            @click="openConfirmShipped"
+          >
+            Mark as Shipped ({{ selectedIds.size }})
+          </button>
 
-  <!-- ✅ Undo ลบล่าสุด -->
-  <button class="btn btn-ghost" :disabled="!showUndo" @click="onUndoDelete">
-    Restore
-  </button>
+          <!-- ลบหลายรายการ -->
+          <button
+            class="btn btn-error"
+            :disabled="selectedIds.size === 0"
+            @click="openConfirmDeleteSelected"
+          >
+            ลบที่เลือก ({{ selectedIds.size }})
+          </button>
 
-  <!-- (ออปชัน) ลบถาวร -->
-  <!--
-  <button
-    class="btn btn-outline btn-error"
-    :disabled="selectedIds.size === 0"
-    @click="onHardDeleteSelected"
-  >
-    ลบถาวร
-  </button>
-  -->
+          <!-- Undo -->
+          <button class="btn btn-ghost" :disabled="!showUndo" @click="onUndoDelete">
+            Restore
+          </button>
 
-  <div class="ml-auto text-sm text-slate-600">
-    Showing {{ paged.length }} of {{ sorted.length }}
-  </div>
-
+          <div class="ml-auto text-sm text-slate-600">
+            Showing {{ paged.length }} of {{ sorted.length }}
+          </div>
+        </div>
       </div>
 
       <!-- Pagination -->
@@ -537,6 +505,7 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
       :existingParcelNos="store.parcelNosSet"
       @save="onSave"
     />
+    <!-- Confirm ทำเครื่องหมาย Shipped -->
     <ConfirmDialog
       v-model="showConfirm"
       title="Confirm"
@@ -544,6 +513,17 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
       confirm-text="Yes"
       cancel-text="No"
       @confirm="doMarkShipped"
+    />
+    <!-- Confirm ลบรายการ (Bulk/Single ผ่าน selection) -->
+    <ConfirmDialog
+      v-model="showConfirmDelete"
+      title="ลบรายการ"
+      :message="pendingDeleteIds.length === 1
+        ? `ต้องการลบ Order #${pendingDeleteIds[0]} ใช่หรือไม่ ? (Undo ได้)`
+        : `ต้องการลบ ${pendingDeleteIds.length} รายการ ใช่หรือไม่ ? (Undo ได้)`"
+      confirm-text="ลบ"
+      cancel-text="ยกเลิก"
+      @confirm="doDeleteConfirmed"
     />
   </section>
 </template>

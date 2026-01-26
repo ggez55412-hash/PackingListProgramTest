@@ -107,6 +107,7 @@ function onSave(updated: OrderRow) {
 
 /* ---------- confirm bulk ---------- */
 const showConfirm = ref(false)
+const showUndo = ref(false)
 function openConfirmShipped() {
   if (selectedIds.value.size === 0) return
   showConfirm.value = true
@@ -116,6 +117,56 @@ function doMarkShipped() {
   store.markAsShipped(ids, dayjs().format('YYYY-MM-DD'))
   selectedIds.value.clear()
   success(`ทำเครื่องหมาย Shipped จำนวน ${ids.length} แถว`)
+}
+
+
+/* ---------- delete with ConfirmDialog (แนวเร็ว) ---------- */
+const showConfirmDelete = ref(false)
+const pendingDeleteIds = ref<string[]>([])
+
+function openConfirmDeleteOne(orderId: string) {
+  pendingDeleteIds.value = [orderId]
+  showConfirmDelete.value = true
+}
+
+function openConfirmDeleteSelected() {
+  if (selectedIds.value.size === 0) return
+  pendingDeleteIds.value = Array.from(selectedIds.value)
+  showConfirmDelete.value = true
+}
+
+function doDeleteConfirmed() {
+  if (pendingDeleteIds.value.length === 0) {
+    showConfirmDelete.value = false
+    return
+  }
+  if (pendingDeleteIds.value.length === 1) {
+    const id = pendingDeleteIds.value[0]!
+    store.deleteOne(id)
+    success(`ลบออเดอร์ #${id} แล้ว (Undo ได้)`)
+  } else {
+    store.deleteMany(pendingDeleteIds.value)
+    success(`ลบ ${pendingDeleteIds.value.length} รายการแล้ว (Undo ได้)`)
+  }
+  // เคลียร์ selection และปิด dialog
+  pendingDeleteIds.value = []
+  selectedIds.value.clear()
+  showConfirmDelete.value = false
+}
+
+
+function onDeleteSelected() {
+  if (selectedIds.value.size === 0) return
+  if (!confirm(`ลบ ${selectedIds.value.size} รายการใช่ไหม?`)) return
+  store.deleteMany(Array.from(selectedIds.value))
+  selectedIds.value.clear()
+  showUndo.value = true
+  setTimeout(() => (showUndo.value = false), 5000)
+}
+
+function onUndoDelete() {
+  store.undoDelete()
+  showUndo.value = false
 }
 
 /* ---------- summary chips ---------- */
@@ -410,7 +461,7 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
                   <div v-if="weightError" class="text-rose-600 text-sm mt-1">{{ weightError }}</div>
                 </div>
               </td>
-
+              
               <td class="td">
                 <button
                   type="button"
@@ -421,6 +472,7 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
                   {{ r.status === 'Shipped' ? 'Disable' : 'Update' }}
                 </button>
               </td>
+              
             </tr>
           </tbody>
         </table>
@@ -435,6 +487,36 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
         >
           Mark as Shipped ({{ selectedIds.size }})
         </button>
+        
+<!-- ✅ ลบหลายรายการ -->
+  <button
+    class="btn btn-ghost"
+    :disabled="selectedIds.size === 0"
+    @click="onDeleteSelected"
+  >
+    Select Delete ({{ selectedIds.size }})
+  </button>
+
+  <!-- ✅ Undo ลบล่าสุด -->
+  <button class="btn btn-ghost" :disabled="!showUndo" @click="onUndoDelete">
+    Restore
+  </button>
+
+  <!-- (ออปชัน) ลบถาวร -->
+  <!--
+  <button
+    class="btn btn-outline btn-error"
+    :disabled="selectedIds.size === 0"
+    @click="onHardDeleteSelected"
+  >
+    ลบถาวร
+  </button>
+  -->
+
+  <div class="ml-auto text-sm text-slate-600">
+    Showing {{ paged.length }} of {{ sorted.length }}
+  </div>
+
       </div>
 
       <!-- Pagination -->

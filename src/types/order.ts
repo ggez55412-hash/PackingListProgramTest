@@ -8,4 +8,5 @@ export interface OrderRow {
   parcelNo?: string
   deliveryDate?: string
   weightKg?: number
+  deletedAt?: number | null
 }

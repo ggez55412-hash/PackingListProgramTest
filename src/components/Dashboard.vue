@@ -1,4 +1,5 @@
 
+<!-- src/components/Dashboard.vue -->
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
 import dayjs from 'dayjs'
@@ -15,13 +16,8 @@ if (store.orders.length === 0) {
   store.replaceAll([
     { orderId: 'FG-001', customer: 'Company A', status: 'Pending', weightKg: 12.5 },
     {
-      orderId: 'FG-002',
-      customer: 'Shop B',
-      status: 'Shipped',
-      transporter: 'Kerry',
-      parcelNo: 'KRY12345',
-      deliveryDate: '2023-10-27',
-      weightKg: 10.0,
+      orderId: 'FG-002', customer: 'Shop B', status: 'Shipped',
+      transporter: 'Kerry', parcelNo: 'KRY12345', deliveryDate: '2023-10-27', weightKg: 10.0,
     },
     { orderId: 'FG-003', customer: 'Company C', status: 'Pending' },
   ])
@@ -38,30 +34,26 @@ const page = ref(1),
   pageSize = ref(25)
 
 const allTransporters = computed(() => {
-  const s = new Set(store.orders.map((o) => (o.transporter || '').trim()).filter(Boolean))
+  const s = new Set(store.orders.map(o => (o.transporter || '').trim()).filter(Boolean))
   return Array.from(s)
 })
 
 const filtered = computed<OrderRow[]>(() => {
-  // TIP: ถ้ามี store.active ให้เปลี่ยนเป็น rows = store.active.slice()
+  // ใช้ orders ตรง ๆ เพราะลบแบบ hard delete แล้ว
   let rows = store.orders.slice()
   const kw = keyword.value.trim().toLowerCase()
-  if (kw)
-    rows = rows.filter(
-      (r) => r.orderId.toLowerCase().includes(kw) || (r.customer || '').toLowerCase().includes(kw),
-    )
-  if (statusFilter.value !== 'ALL') rows = rows.filter((r) => r.status === statusFilter.value)
-  if (transporterFilter.value !== 'ALL')
-    rows = rows.filter((r) => (r.transporter || '') === transporterFilter.value)
+  if (kw) rows = rows.filter(r =>
+    r.orderId.toLowerCase().includes(kw) || (r.customer || '').toLowerCase().includes(kw)
+  )
+  if (statusFilter.value !== 'ALL') rows = rows.filter(r => r.status === statusFilter.value)
+  if (transporterFilter.value !== 'ALL') rows = rows.filter(r => (r.transporter || '') === transporterFilter.value)
   return rows
 })
 
 const sorted = computed<OrderRow[]>(() => {
-  const key = sortKey.value,
-    dir = sortDir.value === 'asc' ? 1 : -1
+  const key = sortKey.value, dir = sortDir.value === 'asc' ? 1 : -1
   return filtered.value.slice().sort((a, b) => {
-    const va = (a[key] ?? '') as any,
-      vb = (b[key] ?? '') as any
+    const va = (a[key] ?? '') as any, vb = (b[key] ?? '') as any
     if (va < vb) return -1 * dir
     if (va > vb) return 1 * dir
     return 0
@@ -75,20 +67,17 @@ const paged = computed<OrderRow[]>(() => {
 })
 function onSort(key: keyof OrderRow) {
   if (sortKey.value === key) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
-  else {
-    sortKey.value = key
-    sortDir.value = 'asc'
-  }
+  else { sortKey.value = key; sortDir.value = 'asc' }
 }
 
 /* ---------- selection ---------- */
 const selectedIds = ref<Set<string>>(new Set())
 const allOnPageChecked = computed(
-  () => paged.value.length > 0 && paged.value.every((r) => selectedIds.value.has(r.orderId)),
+  () => paged.value.length > 0 && paged.value.every(r => selectedIds.value.has(r.orderId)),
 )
 function toggleSelectAllOnPage() {
-  if (allOnPageChecked.value) paged.value.forEach((r) => selectedIds.value.delete(r.orderId))
-  else paged.value.forEach((r) => selectedIds.value.add(r.orderId))
+  if (allOnPageChecked.value) paged.value.forEach(r => selectedIds.value.delete(r.orderId))
+  else paged.value.forEach(r => selectedIds.value.add(r.orderId))
 }
 function toggleSelect(id: string) {
   if (selectedIds.value.has(id)) selectedIds.value.delete(id)
@@ -96,23 +85,18 @@ function toggleSelect(id: string) {
 }
 
 /* ---------- update dialog ---------- */
-const showDialog = ref(false),
-  selectedRow = ref<OrderRow | null>(null)
-function openUpdate(row: OrderRow) {
-  selectedRow.value = { ...row }
-  showDialog.value = true
-}
+const showDialog = ref(false), selectedRow = ref<OrderRow | null>(null)
+function openUpdate(row: OrderRow) { selectedRow.value = { ...row }; showDialog.value = true }
 function onSave(updated: OrderRow) {
   store.upsert(updated)
   success(`บันทึกออเดอร์ ${updated.orderId} สำเร็จ`)
 }
 
-/* ---------- confirm bulk (shipped) ---------- */
-const showConfirm = ref(false)
-const showUndo = ref(false)
+/* ---------- shipped confirm ---------- */
+const showConfirmShipped = ref(false)
 function openConfirmShipped() {
   if (selectedIds.value.size === 0) return
-  showConfirm.value = true
+  showConfirmShipped.value = true
 }
 function doMarkShipped() {
   const ids = Array.from(selectedIds.value)
@@ -121,42 +105,21 @@ function doMarkShipped() {
   success(`ทำเครื่องหมาย Shipped จำนวน ${ids.length} แถว`)
 }
 
-/* ---------- delete with ConfirmDialog (bulk only) ---------- */
+/* ---------- delete (HARD) with ConfirmDialog ---------- */
 const showConfirmDelete = ref(false)
 const pendingDeleteIds = ref<string[]>([])
-
 function openConfirmDeleteSelected() {
   if (selectedIds.value.size === 0) return
   pendingDeleteIds.value = Array.from(selectedIds.value)
   showConfirmDelete.value = true
 }
-
 function doDeleteConfirmed() {
-  if (pendingDeleteIds.value.length === 0) {
-    showConfirmDelete.value = false
-    return
-  }
-  if (pendingDeleteIds.value.length === 1) {
-    // เผื่อกรณีเลือกไว้ 1 แถว
-    const id = pendingDeleteIds.value[0]!
-    store.deleteOne(id)
-    success(`ลบออเดอร์ #${id} แล้ว (Undo ได้)`)
-  } else {
-    store.deleteMany(pendingDeleteIds.value)
-    success(`ลบ ${pendingDeleteIds.value.length} รายการแล้ว (Undo ได้)`)
-  }
+  if (pendingDeleteIds.value.length === 0) { showConfirmDelete.value = false; return }
+  store.hardDeleteByIds(pendingDeleteIds.value)   // 🔥 ลบทั้งแถวจริง
   pendingDeleteIds.value = []
   selectedIds.value.clear()
   showConfirmDelete.value = false
-
-  // แสดง Undo 5 วิ
-  showUndo.value = true
-  setTimeout(() => (showUndo.value = false), 5000)
-}
-
-function onUndoDelete() {
-  store.undoDelete()
-  showUndo.value = false
+  success('ลบรายการที่เลือกแล้ว')
 }
 
 /* ---------- summary chips ---------- */
@@ -167,11 +130,13 @@ const summary = computed(() => ({
   weight: store.totalWeight,
 }))
 
-/* ---------- Excel-like weight cell ---------- */
+/* ---------- weight cell (read-only if Shipped) ---------- */
 const editingRow = ref<number | null>(null)
 const editBuffer = ref<string>(''),
   weightInputs = ref<Record<number, HTMLInputElement | null>>({}),
   weightError = ref<string>('')
+
+const canEditWeight = (r: OrderRow) => r.status !== 'Shipped'
 
 function formatWeight(n?: number | string) {
   if (n == null || n === '') return ''
@@ -193,7 +158,7 @@ function validateWeightString(s: string): string {
   return ''
 }
 function realIndexOf(orderId: string): number {
-  return store.orders.findIndex((o) => o.orderId === orderId)
+  return store.orders.findIndex(o => o.orderId === orderId)
 }
 function getOrderByIndex(i: number) {
   return i >= 0 ? (store.orders[i] ?? null) : null
@@ -202,6 +167,7 @@ function getOrderByIndex(i: number) {
 function startEdit(pageIdx: number, selectAll = true) {
   const row = paged.value[pageIdx]
   if (!row) return
+  if (!canEditWeight(row)) return             // ❌ ห้ามเข้าโหมดแก้ไขถ้า Shipped
   const ri = realIndexOf(row.orderId)
   if (ri < 0) return
   editingRow.value = ri
@@ -214,7 +180,7 @@ function startEdit(pageIdx: number, selectAll = true) {
 }
 function commitEdit(realIndex: number) {
   const current = getOrderByIndex(realIndex)
-  if (!current) return false
+  if (!current || !canEditWeight(current)) return false // ❌ กันกรณีฝืนบันทึก
   const err = validateWeightString(editBuffer.value)
   weightError.value = err
   if (err) {
@@ -231,19 +197,14 @@ function cancelEdit() {
   weightError.value = ''
 }
 function onWeightKeydown(e: KeyboardEvent, realIndex: number) {
-  if (e.key === 'Escape') {
-    e.preventDefault()
-    cancelEdit()
-    return
-  }
+  if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); return }
   const current = getOrderByIndex(realIndex)
   if (!current) return
 
   if (e.key === 'Enter' || e.key === 'Tab') {
     e.preventDefault()
-    const ok = commitEdit(realIndex)
-    if (!ok) return
-    const pageIdx = paged.value.findIndex((r) => r.orderId === current.orderId)
+    const ok = commitEdit(realIndex); if (!ok) return
+    const pageIdx = paged.value.findIndex(r => r.orderId === current.orderId)
     const nextIdx = e.shiftKey ? pageIdx - 1 : pageIdx + 1
     if (nextIdx >= 0 && nextIdx < paged.value.length) startEdit(nextIdx)
     return
@@ -251,9 +212,8 @@ function onWeightKeydown(e: KeyboardEvent, realIndex: number) {
 
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault()
-    const ok = commitEdit(realIndex)
-    if (!ok) return
-    const pageIdx = paged.value.findIndex((r) => r.orderId === current.orderId)
+    const ok = commitEdit(realIndex); if (!ok) return
+    const pageIdx = paged.value.findIndex(r => r.orderId === current.orderId)
     if (pageIdx < 0) return
     const dir = e.key === 'ArrowDown' ? 1 : -1
     const nextIdx = Math.min(Math.max(pageIdx + dir, 0), paged.value.length - 1)
@@ -262,10 +222,7 @@ function onWeightKeydown(e: KeyboardEvent, realIndex: number) {
 }
 function onWeightPaste(e: ClipboardEvent, realIndex: number) {
   const text = e.clipboardData?.getData('text') ?? ''
-  const lines = text
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean)
+  const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
   if (lines.length <= 1) return
   e.preventDefault()
   let i = realIndex
@@ -273,7 +230,9 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
     if (i >= store.orders.length) break
     const n = parseWeight(line)
     const cur = getOrderByIndex(i)
-    if (cur && n != null && n >= 0) store.upsert({ ...cur, weightKg: n })
+    if (cur && canEditWeight(cur) && n != null && n >= 0) {
+      store.upsert({ ...cur, weightKg: n })
+    }
     i++
   }
   const last = Math.min(realIndex + lines.length - 1, store.orders.length - 1)
@@ -287,18 +246,10 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
 
     <!-- Summary chips -->
     <div class="flex flex-wrap gap-3">
-      <div class="chip">
-        Total: <b>{{ summary.total }}</b>
-      </div>
-      <div class="chip">
-        Pending: <b>{{ summary.pending }}</b>
-      </div>
-      <div class="chip">
-        Shipped: <b>{{ summary.shipped }}</b>
-      </div>
-      <div class="chip">
-        Total Weight: {{ Number(summary.weight ?? 0).toFixed(2) }} kg
-      </div>
+      <div class="chip"> Total: <b>{{ summary.total }}</b> </div>
+      <div class="chip"> Pending: <b>{{ summary.pending }}</b> </div>
+      <div class="chip"> Shipped: <b>{{ summary.shipped }}</b> </div>
+      <div class="chip"> Total Weight: {{ Number(summary.weight ?? 0).toFixed(2) }} kg </div>
     </div>
 
     <!-- Filters -->
@@ -307,30 +258,10 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
         <FiltersBar
           :transporters="allTransporters"
           :exportRows="sorted"
-          @update:keyword="
-            (v) => {
-              keyword = v
-              page = 1
-            }
-          "
-          @update:status="
-            (v) => {
-              statusFilter = v
-              page = 1
-            }
-          "
-          @update:transporter="
-            (v) => {
-              transporterFilter = v
-              page = 1
-            }
-          "
-          @importRows="
-            (rows) => {
-              rows.forEach((r) => store.upsert(r))
-              page = 1
-            }
-          "
+          @update:keyword="(v)=>{ keyword=v; page=1 }"
+          @update:status="(v)=>{ statusFilter=v; page=1 }"
+          @update:transporter="(v)=>{ transporterFilter=v; page=1 }"
+          @importRows="(rows)=>{ rows.forEach(r=>store.upsert(r)); page=1 }"
         />
       </div>
     </div>
@@ -339,15 +270,11 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
     <div class="table-wrap">
       <div class="card-header">Finish Goods &amp; Shipments</div>
       <div class="card-body p-0">
-        <table class="table">
+        <table class="table table-fixed w-full">
           <thead class="thead">
             <tr>
               <th class="th w-10">
-                <input
-                  type="checkbox"
-                  :checked="allOnPageChecked"
-                  @change="toggleSelectAllOnPage"
-                />
+                <input type="checkbox" :checked="allOnPageChecked" @change="toggleSelectAllOnPage" />
               </th>
               <th class="th cursor-pointer" @click="onSort('orderId')">
                 <span class="font-semibold">Order ID</span>
@@ -368,7 +295,6 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
                 Weight (kg)
                 <span class="text-xs text-slate-500" v-if="sortKey === 'weightKg'">({{ sortDir }})</span>
               </th>
-              <!-- ✅ ทำให้ Action กว้างพอและคงที่ -->
               <th class="th w-[100px] min-w-[100px] text-center">Action</th>
             </tr>
           </thead>
@@ -376,11 +302,7 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
           <tbody>
             <tr v-for="(r, pageIdx) in paged" :key="r.orderId" class="tr">
               <td class="td">
-                <input
-                  type="checkbox"
-                  :checked="selectedIds.has(r.orderId)"
-                  @change="toggleSelect(r.orderId)"
-                />
+                <input type="checkbox" :checked="selectedIds.has(r.orderId)" @change="toggleSelect(r.orderId)" />
               </td>
               <td class="td font-semibold text-slate-800">{{ r.orderId }}</td>
               <td class="td">{{ r.customer }}</td>
@@ -391,45 +313,30 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
               <td class="td">{{ r.parcelNo || '' }}</td>
               <td class="td">{{ r.deliveryDate || '' }}</td>
 
-              <!-- Weight cell (Excel-like) -->
+              <!-- Weight cell -->
               <td class="td align-top">
                 <!-- View mode -->
                 <div
-                  v-if="editingRow !== store.orders.findIndex((o) => o.orderId === r.orderId)"
-                  class="min-h-[32px] flex items-center cursor-text hover:bg-slate-100 rounded px-1"
-                  title="คลิกเพื่อพิมพ์ (Enter/Tab/↑/↓/Esc)"
-                  @click="startEdit(pageIdx)"
+                  v-if="editingRow !== store.orders.findIndex(o => o.orderId === r.orderId)"
+                  :class="[
+                    'min-h-[32px] flex items-center rounded px-1',
+                    canEditWeight(r) ? 'cursor-text hover:bg-slate-100' : 'opacity-60 cursor-not-allowed'
+                  ]"
+                  :title="canEditWeight(r) ? 'คลิกเพื่อพิมพ์ (Enter/Tab/↑/↓/Esc)' : 'Shipped: แก้ไขไม่ได้'"
+                  @click="canEditWeight(r) && startEdit(pageIdx)"
                 >
                   {{ formatWeight(r.weightKg) }}
                 </div>
+
                 <!-- Edit mode -->
                 <div v-else>
                   <input
-                    :ref="
-                      (el) => {
-                        const i = store.orders.findIndex((o) => o.orderId === r.orderId)
-                        if (i >= 0) weightInputs[i] = el as HTMLInputElement
-                      }
-                    "
+                    :ref="(el)=>{ const i = store.orders.findIndex(o=>o.orderId===r.orderId); if (i>=0) weightInputs[i] = el as HTMLInputElement }"
                     v-model="editBuffer"
-                    @keydown="
-                      (e) => {
-                        const i = store.orders.findIndex((o) => o.orderId === r.orderId)
-                        if (i >= 0) onWeightKeydown(e, i)
-                      }
-                    "
-                    @paste="
-                      (e) => {
-                        const i = store.orders.findIndex((o) => o.orderId === r.orderId)
-                        if (i >= 0) onWeightPaste(e, i)
-                      }
-                    "
-                    @blur="
-                      () => {
-                        const i = store.orders.findIndex((o) => o.orderId === r.orderId)
-                        if (i >= 0) commitEdit(i)
-                      }
-                    "
+                    :disabled="!canEditWeight(r)"
+                    @keydown="(e)=>{ const i = store.orders.findIndex(o=>o.orderId===r.orderId); if (i>=0) onWeightKeydown(e, i) }"
+                    @paste="(e)=>{ const i = store.orders.findIndex(o=>o.orderId===r.orderId); if (i>=0) onWeightPaste(e, i) }"
+                    @blur="()=>{ const i = store.orders.findIndex(o=>o.orderId===r.orderId); if (i>=0) commitEdit(i) }"
                     placeholder="เช่น 12.50"
                     class="w-28 input"
                   />
@@ -437,7 +344,7 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
                 </div>
               </td>
 
-              <!-- ✅ Action: เหลือเฉพาะปุ่ม Update และกัน wrap -->
+              <!-- Action -->
               <td class="td">
                 <div class="flex items-center justify-end gap-2 flex-nowrap whitespace-nowrap">
                   <button
@@ -459,31 +366,15 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
       <!-- Bulk actions -->
       <div class="card-footer">
         <div class="flex items-center gap-3 flex-wrap">
-          <button
-            class="btn btn-ghost"
-            :disabled="selectedIds.size === 0"
-            @click="openConfirmShipped"
-          >
+          <button class="btn btn-ghost" :disabled="selectedIds.size === 0" @click="openConfirmShipped">
             Mark as Shipped ({{ selectedIds.size }})
           </button>
 
-          <!-- ลบหลายรายการ -->
-          <button
-            class="btn btn-error"
-            :disabled="selectedIds.size === 0"
-            @click="openConfirmDeleteSelected"
-          >
-            ลบที่เลือก ({{ selectedIds.size }})
+          <!-- Delete (Hard) -->
+          <button class="btn bg-red-500 text-white hover:bg-red-600":disabled="selectedIds.size === 0" @click="openConfirmDeleteSelected">
+            Delete Selected ({{ selectedIds.size }})
           </button>
 
-          <!-- Undo -->
-          <button class="btn btn-ghost" :disabled="!showUndo" @click="onUndoDelete">
-            Restore
-          </button>
-
-          <div class="ml-auto text-sm text-slate-600">
-            Showing {{ paged.length }} of {{ sorted.length }}
-          </div>
         </div>
       </div>
 
@@ -492,35 +383,28 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
         <button class="btn btn-ghost" :disabled="page <= 1" @click="page--">Prev</button>
         <div>Page {{ page }} / {{ totalPages }}</div>
         <button class="btn btn-ghost" :disabled="page >= totalPages" @click="page++">Next</button>
-        <div class="ml-auto text-sm text-slate-600">
-          Showing {{ paged.length }} of {{ sorted.length }}
-        </div>
+        <div class="ml-auto text-sm text-slate-600">Showing {{ paged.length }} of {{ sorted.length }}</div>
       </div>
     </div>
 
     <!-- Dialogs -->
-    <UpdateDialog
-      v-model="showDialog"
-      :order="selectedRow"
-      :existingParcelNos="store.parcelNosSet"
-      @save="onSave"
-    />
-    <!-- Confirm ทำเครื่องหมาย Shipped -->
+    <UpdateDialog v-model="showDialog" :order="selectedRow" :existingParcelNos="store.parcelNosSet" @save="onSave" />
+
+    <!-- Confirm Shipped -->
     <ConfirmDialog
-      v-model="showConfirm"
+      v-model="showConfirmShipped"
       title="Confirm"
       :message="`ทำเครื่องหมาย Shipped จำนวน ${selectedIds.size} แถว ?`"
       confirm-text="Yes"
       cancel-text="No"
       @confirm="doMarkShipped"
     />
-    <!-- Confirm ลบรายการ (Bulk/Single ผ่าน selection) -->
+
+    <!-- Confirm Delete (Hard) -->
     <ConfirmDialog
       v-model="showConfirmDelete"
       title="ลบรายการ"
-      :message="pendingDeleteIds.length === 1
-        ? `ต้องการลบ Order #${pendingDeleteIds[0]} ใช่หรือไม่ ? (Undo ได้)`
-        : `ต้องการลบ ${pendingDeleteIds.length} รายการ ใช่หรือไม่ ? (Undo ได้)`"
+      :message="`ลบ ${pendingDeleteIds.length} รายการ แบบถาวร ใช่หรือไม่?`"
       confirm-text="ลบ"
       cancel-text="ยกเลิก"
       @confirm="doDeleteConfirmed"

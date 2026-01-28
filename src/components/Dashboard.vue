@@ -396,8 +396,8 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
     <!-- Confirm Shipped -->
     <ConfirmDialog
       v-model="showConfirmShipped"
-      title="Confirm"
-      :message="`ทำเครื่องหมาย Shipped จำนวน ${selectedIds.size} แถว ?`"
+      title="Mark Rows"
+      :message="`Mark ${selectedIds.size} row as Shipped?`"
       confirm-text="Yes"
       cancel-text="No"
       @confirm="doMarkShipped"
@@ -406,10 +406,10 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
     <!-- Confirm Delete (Hard) -->
     <ConfirmDialog
       v-model="showConfirmDelete"
-      title="ลบรายการ"
-      :message="`ลบ ${pendingDeleteIds.length} รายการ แบบถาวร ใช่หรือไม่?`"
-      confirm-text="ลบ"
-      cancel-text="ยกเลิก"
+      title="Delete items"
+      :message="`Do you want to delete ${pendingDeleteIds.length} items?`"
+      confirm-text="Delete"
+      cancel-text="Cancel"
       @confirm="doDeleteConfirmed"
     />
   </section>

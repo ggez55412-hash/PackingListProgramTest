@@ -1,7 +1,7 @@
 import { reactive, readonly } from 'vue'
 
-export type ToastType = 'success' | 'error' | 'info'
-interface ToastItem {
+export type ToastType = 'success' | 'error' | 'info'| 'warn'
+export interface ToastItem {
   id: number
   type: ToastType
   message: string
@@ -26,6 +26,7 @@ export function useToast() {
     success: (m: string, ms?: number) => push('success', m, ms),
     error: (m: string, ms?: number) => push('error', m, ms),
     info: (m: string, ms?: number) => push('info', m, ms),
+    warn:    (m: string, ms?: number) => push('warn', m, ms),
     remove,
   }
 }

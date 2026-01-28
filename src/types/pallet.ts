@@ -1,17 +1,11 @@
-export interface PalletRow {
-  Position: string | number
-  'Position ident': string
-  BarCodeNumber: string
-  'Position Detail': string
-  IdentNumber: string
-  Detail: string
-  Type: 'EP' | 'MHL' | 'PD' | string
-  Weight?: number | null
-  Unit?: string | null
-  QTY?: number | null
-  'Pallet Number'?: string | null
-  'Work Number'?: string | null
-  'Seal Number'?: string | null
-  ContainerNumber?: string | null
-  __lineWeightKg?: number | null
+
+export type PalletStatus = 'Open' | 'Packed' | 'Shipped'
+
+export interface Pallet {
+  id: string
+  status: PalletStatus
+  transporter?: string
+  createdAt: string
+  orderIds: string[]
+  maxWeightKg: number
 }

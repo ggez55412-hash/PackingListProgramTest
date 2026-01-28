@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import type { PalletRow } from '@/types/pallet'
+import type { PalletRow } from '@/types/palletrow'
 import { parseNumberLoose, normalizeUnit, lineWeightKg } from '@/utils/uom'
 
 export async function parseXlsx(file: File): Promise<PalletRow[]> {

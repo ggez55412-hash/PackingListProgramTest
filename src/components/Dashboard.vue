@@ -1,5 +1,3 @@
-
-<!-- src/components/Dashboard.vue -->
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
 import dayjs from 'dayjs'
@@ -339,7 +337,12 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
                     @blur="()=>{ const i = store.orders.findIndex(o=>o.orderId===r.orderId); if (i>=0) commitEdit(i) }"
                     placeholder="เช่น 12.50"
                     class="w-28 input"
-                  />
+                    inputmode="decimal"
+                    pattern="^\d+([.,]\d{1,2})?$"
+                    autocomplete="off"
+                    enterkeyhint="done"
+                    aria-label="น้ำหนัก (กิโลกรัม)"
+                    />
                   <div v-if="weightError" class="text-rose-600 text-sm mt-1">{{ weightError }}</div>
                 </div>
               </td>

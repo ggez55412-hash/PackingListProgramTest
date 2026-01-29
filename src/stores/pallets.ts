@@ -28,7 +28,6 @@ function getRowPalletId(r: PalletRow): string | undefined {
   return s ? s : undefined
 }
 
-
 export const usePalletsStore = defineStore('pallets', {
   state: () => ({
     /** Raw rows imported from CSV */
@@ -54,15 +53,16 @@ export const usePalletsStore = defineStore('pallets', {
   getters: {
     /** Group rows by 'Pallet Number' (CSV domain, unchanged) */
     byPallet(state): Map<string, PalletRow[]> {
-      const m = new Map<string, PalletRow[]>()
-      for (const r of state.rows) {
-        const key = getRowPalletId(r)
-        const arr = m.get(key)
-        if (arr) arr.push(r)
-        else m.set(key, [r])
-      }
-      return m
-    },
+  const m = new Map<string, PalletRow[]>()
+  for (const r of state.rows) {
+    const key = getRowPalletId(r)
+    if (!key) continue
+    const arr = m.get(key)
+    if (arr) arr.push(r)
+    else m.set(key, [r])
+  }
+  return m
+},
 
     /** Pallet summaries (CSV domain, unchanged) */
     palletsSummary(): PalletSummary[] {
@@ -246,8 +246,7 @@ export const usePalletsStore = defineStore('pallets', {
         if (getRowPalletId(r) === String(id)) {
           const oid = getRowOrderId(r)
           if (set.has(oid)) {
-            r['Pallet Number'] = null as any
-            removed++
+            ;(r as any)['Pallet Number'] = ''
           }
         }
       }

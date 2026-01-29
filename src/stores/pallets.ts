@@ -22,9 +22,12 @@ function getRowOrderId(r: PalletRow): string {
 /**
  * Helper: safe pallet id string
  */
-function getRowPalletId(r: PalletRow): string {
-  return (r['Pallet Number'] && String(r['Pallet Number']).trim()) || '—'
+function getRowPalletId(r: PalletRow): string | undefined {
+  const v = (r as any)['Pallet Number']
+  const s = v == null ? '' : String(v).trim()
+  return s ? s : undefined
 }
+
 
 export const usePalletsStore = defineStore('pallets', {
   state: () => ({

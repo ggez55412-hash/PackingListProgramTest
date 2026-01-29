@@ -8,5 +8,6 @@ export default createRouter({
     { path: '/', redirect: '/dashboard' },
     { path: '/dashboard', name: 'dashboard', component: DashboardView },
     { path: '/pallets', name: 'pallets', component: PalletsView },
+    { path: '/about', name: 'about', component: () => import('@/views/AboutView.vue') }
   ],
 })

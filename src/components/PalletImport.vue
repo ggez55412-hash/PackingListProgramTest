@@ -28,28 +28,14 @@ async function onFile(e: Event) {
   <div class="space-y-3">
     <div class="flex items-center gap-2">
       <input ref="fileEl" type="file" class="hidden" accept=".xlsx" @change="onFile" />
-      <button class="px-3 py-1.5 border rounded bg-white hover:bg-gray-50" @click="fileEl?.click()">
-        Import Excel (.xlsx)
-      </button>
-      <button
-        class="px-3 py-1.5 border rounded bg-white hover:bg-gray-50"
-        @click="s.bulkFix"
-        :disabled="!hasData"
-      >
-        Normalize & Recalc
-      </button>
+      <button class="px-3 py-1.5 border rounded bg-white hover:bg-gray-50" @click="fileEl?.click()">Import Excel (.xlsx)</button>
+      <button class="px-3 py-1.5 border rounded bg-white hover:bg-gray-50" @click="s.bulkFix" :disabled="!hasData">Normalize & Recalc</button>
     </div>
 
     <div v-if="hasData" class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-      <div class="px-3 py-2 bg-white border rounded">
-        Rows: <b>{{ s.rows.length }}</b>
-      </div>
-      <div class="px-3 py-2 bg-white border rounded">
-        Pallets: <b>{{ s.palletsSummary.length }}</b>
-      </div>
-      <div class="px-3 py-2 bg-white border rounded">
-        Errors: <b>{{ s.errors.length }}</b>
-      </div>
+      <div class="px-3 py-2 bg-white border rounded">Rows: <b>{{ s.rows.length }}</b></div>
+      <div class="px-3 py-2 bg-white border rounded">Pallets: <b>{{ s.palletsSummary.length }}</b></div>
+      <div class="px-3 py-2 bg-white border rounded">Unassigned: <b>{{ s.unassignedRows.length }}</b></div>
     </div>
   </div>
 </template>

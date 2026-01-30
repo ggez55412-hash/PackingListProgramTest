@@ -108,11 +108,8 @@ useShortcuts({
     <div class="flex items-center justify-between">
       <h1 class="text-xl font-bold text-slate-800">Pallet #{{ palletId }}</h1>
       <div class="flex items-center gap-2">
-        <button class="btn btn-primary" v-if="pallet?.status !== 'Shipped'" @click="showAddDialog = true">
-          + Add Orders
-        </button>
         <button
-          class="btn btn-warning"
+          class="btn bg-red-500 text-white hover:bg-red-600"
           :disabled="!pallet || pallet.status==='Shipped' || selectedIds.size===0"
           title="Remove selected from pallet"
           @click="onRemoveSelected">
@@ -120,7 +117,7 @@ useShortcuts({
         </button>
         <button
           v-if="pallet?.status !== 'Shipped'"
-          class="btn btn-success"
+          class="btn btn-primary"
           :disabled="!pallet || palletOrders.length===0 || overWeight"
           :title="overWeight ? 'Over max weight' : 'Mark shipped'"
           @click="onMarkShipped">

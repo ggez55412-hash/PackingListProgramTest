@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed, nextTick } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePalletsStore } from '@/stores/pallets'
 import { useOrdersStore } from '@/stores/orders'
@@ -123,7 +123,7 @@ useShortcuts({
           @click="onMarkShipped">
           Mark Shipped
         </button>
-        <button v-else class="btn btn-ghost" @click="onReopen" title="Reopen pallet">
+        <button v-else class="btn bg-green-500 text-white hover:bg-green-600" @click="onReopen" title="Reopen pallet">
           Reopen
         </button>
       </div>
@@ -147,7 +147,8 @@ useShortcuts({
       </div>
     </div>
 
-    <div class="card p-0">
+    <!-- ✅ ทำขอบตารางโค้ง + ซ่อน overflow และผูกคลาส pallet-table เพื่อรีเซ็ตเส้นแนวตั้ง -->
+    <div class="card p-0 rounded-lg overflow-hidden pallet-table">
       <div class="card-body p-0">
         <div class="max-h-[65vh] overflow-auto">
           <table class="table table-fixed w-full">
@@ -184,12 +185,9 @@ useShortcuts({
                 <td class="td">{{ r.transporter || '—' }}</td>
                 <td class="td">{{ r.parcelNo || '—' }}</td>
                 <td class="td">{{ r.deliveryDate || '—' }}</td>
-
-                <!-- sticky action that inherits row bg -->
-                <td class="td sticky right-0 sticky-action border-l border-slate-200">
+                <td class="td sticky right-0 sticky-action">
                   <div class="flex items-center justify-end gap-2 flex-nowrap whitespace-nowrap">
                     <button class="btn btn-ghost btn-sm" @click="openOrderDetail(r.orderId)">View</button>
-                    <button class="btn btn-outline btn-sm" @click="toggleRow(r.orderId); onRemoveSelected()">Remove</button>
                   </div>
                 </td>
               </tr>
@@ -225,6 +223,8 @@ useShortcuts({
         </div>
       </div>
 
+      <!-- ⛔️ ลบ footer hint ที่เคยมี -->
+      <!--
       <div class="card-footer flex items-center gap-3">
         <div class="text-sm text-slate-600">
           {{ palletOrders.length }} orders · {{ totalWeight.toFixed(2) }} kg
@@ -233,6 +233,7 @@ useShortcuts({
           Use Ctrl+A to select all · Delete to remove
         </div>
       </div>
+      -->
     </div>
 
     <!-- dialogs -->
@@ -250,6 +251,7 @@ useShortcuts({
       cancel-text="Cancel"
       @confirm="doMarkShipped"
     />
+    <!-- (คง ConfirmDialog สำหรับ Remove Selected ไว้เพราะปุ่มด้านบนยังมี) -->
     <ConfirmDialog
       v-model="showConfirmRemove"
       title="Remove orders"
@@ -262,11 +264,36 @@ useShortcuts({
 </template>
 
 <style scoped>
-/* unify row background for sticky cells via --row-bg */
+/* ====== พื้นหลังของแถว (ใช้กับ sticky cell) ====== */
 tr.row-bg { --row-bg: #ffffff; }
 tr.row-bg.zebra-even { --row-bg: #f8fafc; }  /* slate-50 */
 tr.row-bg.zebra-odd  { --row-bg: #ffffff; }
 tr.row-bg.is-selected { --row-bg: #eff6ff; } /* blue-50 */
 tr.row-bg:hover { --row-bg: #f1f5f9; }       /* slate-100 */
 .td.sticky-action { background: var(--row-bg) !important; }
+
+/* ====== รีเซ็ตเส้นแนวตั้ง/ตัวคั่นจากธีม (ลึก) ====== */
+:deep(.pallet-table .table th),
+:deep(.pallet-table .table td) {
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+}
+:deep(.pallet-table .table thead th) { border-bottom: 1px solid rgba(15,23,42,.12) !important; }
+:deep(.pallet-table .table tbody td) { border-bottom: 1px solid rgba(15,23,42,.12) !important; }
+
+/* pseudo-elements ที่บางธีมใช้คั่นคอลัมน์/แถว */
+:deep(.pallet-table .table thead th::before),
+:deep(.pallet-table .table thead th::after),
+:deep(.pallet-table .table tbody td::before),
+:deep(.pallet-table .table tbody td::after) {
+  content: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* กันกรณี ancestor มี divide-x|y */
+:deep(.pallet-table .divide-x > * + *),
+:deep(.pallet-table [class*="divide-x"] > * + *) { border-left-width: 0 !important; }
+:deep(.pallet-table .divide-y > * + *),
+:deep(.pallet-table [class*="divide-y"] > * + *) { border-top-width: 0 !important; }
 </style>

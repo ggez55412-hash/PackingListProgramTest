@@ -1,89 +1,112 @@
-
 // src/stores/orders.ts
 import { defineStore } from 'pinia'
-import type { OrderRow } from '@/types/order'
+import type { Order, ShipmentStatus } from '@/types/order'
 
 export const useOrdersStore = defineStore('orders', {
   state: () => ({
-    orders: [] as OrderRow[],
-    _lastRemoved: null as null | { items: OrderRow[] },
+    orders: [] as Order[],
+    loading: false,
   }),
 
   getters: {
-    active: (s) => s.orders.filter(o => !o.deletedAt),               // เผื่อใช้กรอง soft delete
-    deleted: (s) => s.orders.filter(o => !!o.deletedAt),
+    // เฉพาะที่ยังไม่ถูกลบ (soft delete)
+    activeOrders: (s): Order[] => s.orders.filter(o => !o.deletedAt),
 
-    count: (s) => s.orders.filter(o => !o.deletedAt).length,
-    pendingCount: (s) => s.orders.filter(o => !o.deletedAt && o.status === 'Pending').length,
-    shippedCount: (s) => s.orders.filter(o => !o.deletedAt && o.status === 'Shipped').length,
-    totalWeight: (s) => s.orders.reduce((t, r) => t + (!r.deletedAt ? (Number(r.weightKg) || 0) : 0), 0),
+    // นับทั้งหมด (ไม่รวมที่ถูกลบ)
+    count(): number {
+      return this.activeOrders.length
+    },
 
-    parcelNosSet: (s): Set<string> =>
-      new Set(
-        s.orders
-          .filter(o => !o.deletedAt)
-          .map((o) => (o.parcelNo || '').trim())
-          .filter(Boolean),
-      ),
+    // นับสถานะต่าง ๆ
+    pendingCount(): number {
+      return this.activeOrders.filter(o => o.status === 'Pending').length
+    },
+    shippedCount(): number {
+      return this.activeOrders.filter(o => o.status === 'Shipped').length
+    },
+
+    // น้ำหนักรวมของที่ยัง active
+    totalWeight(): number {
+      return this.activeOrders.reduce((sum, o) => sum + (o.weightKg ?? 0), 0)
+    },
+
+    // Set ของหมายเลขพัสดุ (ที่ยัง active)
+    parcelNosSet(): Set<string> {
+      const set = new Set<string>()
+      for (const o of this.activeOrders) {
+        if (o.parcelNo) set.add(o.parcelNo)
+      }
+      return set
+    },
+
+    // ใช้ใน modal เลือก order
+    pendingOrders(): Order[] {
+      return this.activeOrders.filter(o => o.status === 'Pending')
+    },
   },
 
   actions: {
-    replaceAll(rows: OrderRow[]) {
-      this.orders = rows.map(r => ({ deletedAt: null, ...r }))
-      this._lastRemoved = null
-    },
+    // โหลดข้อมูล (ปรับใช้ API จริงของพี่ได้)
+    async fetchOrders() {
+      this.loading = true
+      try {
+        // ------- MOCK DATA: ใช้เทสให้ UI ขึ้นก่อน -------
+        const data: Order[] = [
+          { orderId: 'FG-003', customer: 'Company C', status: 'Pending',  weightKg: 30, deletedAt: null },
+          { orderId: 'FG-004', customer: 'Company F', status: 'Pending',  weightKg: 30, deletedAt: null },
+          { orderId: 'FG-005', customer: 'Company F', status: 'Packed',   weightKg: 30, deletedAt: null },
+          { orderId: 'FG-006', customer: 'Company F', status: 'Shipped',  weightKg: 30, deletedAt: null },
+        ]
+        // // ถ้าใช้ API จริง:
+        // const res = await fetch('/api/orders')
+        // const data = (await res.json()) as Order[]
 
-    upsert(row: OrderRow) {
-      const i = this.orders.findIndex(o => o.orderId === row.orderId)
-      if (i < 0) {
-        this.orders.push({ deletedAt: null, ...row })
-      } else {
-        const prev = this.orders[i]!
-        this.orders[i] = { ...prev, ...row, deletedAt: prev.deletedAt ?? null }
+        this.replaceAll(data)
+      } finally {
+        this.loading = false
       }
     },
 
-    markAsShipped(ids: string[], deliveredOn?: string) {
-      const set = new Set(ids)
-      this.orders = this.orders.map(o =>
-        set.has(o.orderId)
-          ? { ...o, status: 'Shipped', deliveryDate: o.deliveryDate || deliveredOn }
-          : o
-      )
+    // ✅ แทนที่ลิสต์ทั้งหมด
+    replaceAll(rows: Order[]) {
+      // ทำให้แน่ใจว่าทุกแถวมี deletedAt (อย่างน้อย null)
+      this.orders = rows.map(r => ({ deletedAt: null, ...r }))
     },
 
-    // ---------- Soft delete (เผื่ออนาคตต้องการ) ----------
-    deleteOne(orderId: string) {
-      const target = this.orders.find(o => o.orderId === orderId)
-      if (!target || target.deletedAt) return
-      target.deletedAt = Date.now()
-      this._lastRemoved = { items: [{ ...target }] }
+    // ✅ แทรก/อัปเดตตาม orderId
+    upsert(row: Order) {
+      const id = row.orderId
+      const idx = this.orders.findIndex(o => o.orderId === id)
+      const normalized: Order = { deletedAt: null, ...row }
+      if (idx === -1) this.orders.push(normalized)
+      else this.orders[idx] = { ...this.orders[idx], ...normalized }
     },
-    deleteMany(orderIds: string[]) {
-      const set = new Set(orderIds)
-      const removed: OrderRow[] = []
+
+    // ✅ เปลี่ยนสถานะเป็น Shipped (รับได้ทั้ง array/string เดี่ยว) + ตั้งวันที่ส่ง (optional)
+    markAsShipped(ids: string[] | string, shippedDate?: string) {
+      const set = new Set(Array.isArray(ids) ? ids : [ids])
       for (const o of this.orders) {
-        if (!o.deletedAt && set.has(o.orderId)) {
-          o.deletedAt = Date.now()
-          removed.push({ ...o })
+        if (set.has(o.orderId)) {
+          o.status = 'Shipped'
+          if (shippedDate) o.deliveryDate = shippedDate
         }
       }
-      if (removed.length) this._lastRemoved = { items: removed }
-    },
-    undoDelete() {
-      if (!this._lastRemoved) return
-      const set = new Set(this._lastRemoved.items.map(i => i.orderId))
-      for (const o of this.orders) {
-        if (set.has(o.orderId)) o.deletedAt = null
-      }
-      this._lastRemoved = null
     },
 
-    // ---------- Hard delete (ใช้จริงใน Dashboard) ----------
-    hardDeleteByIds(orderIds: string[]) {
-      const set = new Set(orderIds)
-      this.orders = this.orders.filter(o => !set.has(o.orderId)) // ลบทิ้งทั้งแถว
-      this._lastRemoved = null
+    // ✅ ลบออกจาก state จริง ๆ (hard delete)
+    hardDeleteByIds(ids: string[]) {
+      const set = new Set(ids)
+      this.orders = this.orders.filter(o => !set.has(o.orderId))
+    },
+
+    // (ตัวเลือก) ลบแบบ soft delete
+    softDelete(id: string) {
+      const o = this.orders.find(x => x.orderId === id)
+      if (o) o.deletedAt = new Date().toISOString()
+    },
+    restore(id: string) {
+      const o = this.orders.find(x => x.orderId === id)
+      if (o) o.deletedAt = null
     },
   },
 })

@@ -374,7 +374,7 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
           </button>
 
           <!-- Delete (Hard) -->
-          <button class="btn bg-red-500 text-white hover:bg-red-600":disabled="selectedIds.size === 0" @click="openConfirmDeleteSelected">
+          <button class="btn bg-red-500 text-white hover:bg-red-600" :disabled="selectedIds.size === 0" @click="openConfirmDeleteSelected">
             Delete Selected ({{ selectedIds.size }})
           </button>
 

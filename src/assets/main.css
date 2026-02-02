@@ -33,3 +33,49 @@ a,
     padding: 0 2rem;
   }
 }
+/* ---- เฉพาะตารางบนหน้า Pallet: ใช้คลาส .pallet-table ครอบไว้นอกสุด ---- */
+
+/* (A) ปิดเส้นแนวตั้ง/ตัวคั่นทุกชนิด จากธีม/ชุด UI */
+.pallet-table .table th,
+.pallet-table .table td {
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+}
+
+/* คุมเส้นล่างให้สม่ำเสมอ */
+.pallet-table .table thead th { border-bottom: 1px solid rgba(15,23,42,.12) !important; }
+.pallet-table .table tbody td { border-bottom: 1px solid rgba(15,23,42,.12) !important; }
+
+/* ฆ่า pseudo-element ที่บางธีมใช้คั่นคอลัมน์/แถว */
+.pallet-table .table thead th::before,
+.pallet-table .table thead th::after,
+.pallet-table .table tbody td::before,
+.pallet-table .table tbody td::after {
+  content: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ฆ่า divide-x / divide-y ที่อาจติดมากับ ancestor */
+.pallet-table .divide-x > * + *,
+.pallet-table [class*="divide-x"] > * + * { border-left-width: 0 !important; }
+.pallet-table .divide-y > * + *,
+.pallet-table [class*="divide-y"] > * + * { border-top-width: 0 !important; }
+
+/* (B) มุมตารางโค้ง + ครอบ overflow เพื่อไม่ให้เส้นล้น */
+.pallet-table {
+  border-radius: .75rem; /* rounded-lg */
+  overflow: hidden;      /* ให้มุมตารางโค้งไปพร้อมการ์ด */
+}
+
+/* (C) คอนเทนเนอร์ปุ่ม Action */
+.pallet-table .action-buttons{
+  display:inline-flex; align-items:center; justify-content:center; gap:.5rem; white-space:nowrap;
+}
+.pallet-table .action-buttons > *{ margin:0; line-height:1.25rem; }
+
+/* (D) Fallback กันเคสไฟล์เก่ายังมีปุ่ม Remove ในแถว */
+.pallet-table .action-buttons .btn-remove { display:none !important; }
+
+/* (E) Fallback ซ่อน footer hint ถ้ายังหลงเหลือ */
+.pallet-table .table-footer-hint { display:none !important; }

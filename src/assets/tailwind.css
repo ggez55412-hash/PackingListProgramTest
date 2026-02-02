@@ -15,7 +15,6 @@
   }
 }
 
-/* === Components: utility ชุดใช้งานซ้ำ (ไม่ @apply class ที่เราตั้งเอง) === */
 @layer components {
   /* --- Card --- */
   .card {

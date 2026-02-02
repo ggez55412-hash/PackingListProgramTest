@@ -13,7 +13,7 @@ import { RouterView } from 'vue-router'
       <span class="text-indigo-600"> Management</span>
       <span class="ml-1 text-slate-400">System</span>
     </div>
-    
+
     <nav class="ml-auto flex items-center gap-4 text-sm">
       <RouterLink
         to="/about"
@@ -23,7 +23,6 @@ import { RouterView } from 'vue-router'
         About Us
       </RouterLink>
     </nav>
-
   </header>
 
   <!-- Main layout -->

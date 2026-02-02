@@ -1,4 +1,3 @@
-
 <script setup lang="ts">
 import type { Pallet } from '@/types/pallet'
 defineProps<{
@@ -6,6 +5,8 @@ defineProps<{
   ordersCount: number
   totalWeight: number
   maxWeight: number
+  /** ✅ เพิ่ม: fallback จากหน้า Pallet */
+  fallbackTransporter?: string
 }>()
 </script>
 
@@ -29,7 +30,9 @@ defineProps<{
       </div>
       <div>
         <div class="text-slate-500">Transporter</div>
-        <div class="font-medium">{{ pallet.transporter || '—' }}</div>
+        <div class="font-medium">
+          {{ (pallet.transporter && pallet.transporter.trim()) || (fallbackTransporter && fallbackTransporter.trim()) || '—' }}
+        </div>
       </div>
       <div>
         <div class="text-slate-500">Created</div>

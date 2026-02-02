@@ -1,0 +1,25 @@
+/* --- badge base --- */
+.badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border;
+}
+
+/* --- status colors --- */
+.badge-green {
+  @apply bg-emerald-50 text-emerald-700 border-emerald-200;
+}
+
+.badge-amber {
+  @apply bg-amber-50 text-amber-700 border-amber-200;
+}
+
+.badge-gray {
+  @apply bg-slate-50 text-slate-600 border-slate-200;
+}
+
+.badge-indigo {
+  @apply bg-indigo-50 text-indigo-700 border-indigo-200;
+}
+
+.badge-red {
+  @apply bg-rose-50 text-rose-700 border-rose-200;
+}

@@ -37,6 +37,11 @@ const palletOrders = computed<OrderRow[]>(() => {
   return p.orderIds.map(id => index.get(id)).filter(Boolean) as OrderRow[]
 })
 
+/** ✅ เพิ่ม: ใช้ transporter ตัวแรกจากออเดอร์ใน pallet เป็น fallback ให้ Header */
+const fallbackTransporter = computed(() =>
+  palletOrders.value.map(o => (o.transporter || '').trim()).find(Boolean) || ''
+)
+
 const totalWeight = computed(() => palletOrders.value.reduce((s, o) => s + (Number(o.weightKg) || 0), 0))
 const maxWeight = computed(() => pallet.value?.maxWeightKg ?? 1000)
 const overWeight = computed(() => totalWeight.value > maxWeight.value)
@@ -129,12 +134,14 @@ useShortcuts({
       </div>
     </div>
 
+    <!-- ✅ ส่ง fallbackTransporter เข้า Header -->
     <PalletHeaderInfo
       v-if="pallet"
       :pallet="pallet"
       :orders-count="palletOrders.length"
       :total-weight="totalWeight"
       :max-weight="maxWeight"
+      :fallback-transporter="fallbackTransporter"
     />
 
     <div class="flex items-center gap-3">
@@ -147,7 +154,6 @@ useShortcuts({
       </div>
     </div>
 
-    <!-- ✅ ทำขอบตารางโค้ง + ซ่อน overflow และผูกคลาส pallet-table เพื่อรีเซ็ตเส้นแนวตั้ง -->
     <div class="card p-0 rounded-lg overflow-hidden pallet-table">
       <div class="card-body p-0">
         <div class="max-h-[65vh] overflow-auto">
@@ -182,7 +188,8 @@ useShortcuts({
                 <td class="td">
                   <span :class="r.status === 'Pending' ? 'badge-amber' : 'badge-green'">{{ r.status }}</span>
                 </td>
-                <td class="td">{{ r.transporter || '—' }}</td>
+                <!-- ✅ fallback ที่คอลัมน์ด้วย: ใช้ของออเดอร์ก่อน ถ้าไม่มีให้ใช้ของ pallet -->
+                <td class="td">{{ r.transporter || pallet?.transporter || '—' }}</td>
                 <td class="td">{{ r.parcelNo || '—' }}</td>
                 <td class="td">{{ r.deliveryDate || '—' }}</td>
                 <td class="td sticky right-0 sticky-action">
@@ -223,17 +230,7 @@ useShortcuts({
         </div>
       </div>
 
-      <!-- ⛔️ ลบ footer hint ที่เคยมี -->
-      <!--
-      <div class="card-footer flex items-center gap-3">
-        <div class="text-sm text-slate-600">
-          {{ palletOrders.length }} orders · {{ totalWeight.toFixed(2) }} kg
-        </div>
-        <div class="ml-auto text-sm text-slate-500">
-          Use Ctrl+A to select all · Delete to remove
-        </div>
-      </div>
-      -->
+      <!-- footer hint เดิมถูกลบตามที่คุย -->
     </div>
 
     <!-- dialogs -->
@@ -251,7 +248,6 @@ useShortcuts({
       cancel-text="Cancel"
       @confirm="doMarkShipped"
     />
-    <!-- (คง ConfirmDialog สำหรับ Remove Selected ไว้เพราะปุ่มด้านบนยังมี) -->
     <ConfirmDialog
       v-model="showConfirmRemove"
       title="Remove orders"
@@ -264,7 +260,7 @@ useShortcuts({
 </template>
 
 <style scoped>
-/* ====== พื้นหลังของแถว (ใช้กับ sticky cell) ====== */
+/* unify row background for sticky cells via --row-bg */
 tr.row-bg { --row-bg: #ffffff; }
 tr.row-bg.zebra-even { --row-bg: #f8fafc; }  /* slate-50 */
 tr.row-bg.zebra-odd  { --row-bg: #ffffff; }
@@ -272,7 +268,7 @@ tr.row-bg.is-selected { --row-bg: #eff6ff; } /* blue-50 */
 tr.row-bg:hover { --row-bg: #f1f5f9; }       /* slate-100 */
 .td.sticky-action { background: var(--row-bg) !important; }
 
-/* ====== รีเซ็ตเส้นแนวตั้ง/ตัวคั่นจากธีม (ลึก) ====== */
+/* kill vertical dividers from theme (deep) */
 :deep(.pallet-table .table th),
 :deep(.pallet-table .table td) {
   border-left-width: 0 !important;
@@ -280,18 +276,12 @@ tr.row-bg:hover { --row-bg: #f1f5f9; }       /* slate-100 */
 }
 :deep(.pallet-table .table thead th) { border-bottom: 1px solid rgba(15,23,42,.12) !important; }
 :deep(.pallet-table .table tbody td) { border-bottom: 1px solid rgba(15,23,42,.12) !important; }
-
-/* pseudo-elements ที่บางธีมใช้คั่นคอลัมน์/แถว */
 :deep(.pallet-table .table thead th::before),
 :deep(.pallet-table .table thead th::after),
 :deep(.pallet-table .table tbody td::before),
 :deep(.pallet-table .table tbody td::after) {
-  content: none !important;
-  border: 0 !important;
-  box-shadow: none !important;
+  content: none !important; border: 0 !important; box-shadow: none !important;
 }
-
-/* กันกรณี ancestor มี divide-x|y */
 :deep(.pallet-table .divide-x > * + *),
 :deep(.pallet-table [class*="divide-x"] > * + *) { border-left-width: 0 !important; }
 :deep(.pallet-table .divide-y > * + *),

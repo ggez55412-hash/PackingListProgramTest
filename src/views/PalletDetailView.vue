@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePalletsStore } from '@/stores/pallets'
 import { useOrdersStore } from '@/stores/orders'
@@ -9,9 +9,9 @@ import PalletHeaderInfo from '@/components/pallets/PalletHeaderInfo.vue'
 import AddOrdersToPalletDialog from '@/components/pallets/AddOrdersToPalletDialog.vue'
 import ProgressBar from '@/components/pallets/ProgressBar.vue'
 import EmptyState from '@/components/shared/EmptyState.vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue' // you already have this
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useShortcuts } from '@/composables/useShortcuts'
-import { useToast } from '@/composables/useToast' // you already have this in dashboard
+import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,35 +24,58 @@ const palletId = computed(() => String(route.params.id))
 const loading = ref(true)
 onMounted(async () => {
   if (!pallets.byId(palletId.value)) {
-    await pallets.fetchOne(palletId.value) // no-op if you keep it frontend only
+    await pallets.fetchOne(palletId.value)
   }
   loading.value = false
 })
 
+// เปลี่ยน pallet แล้วล้าง selection
+watch(palletId, () => setSelected(new Set()))
+
 const pallet = computed<Pallet | null>(() => pallets.byId(palletId.value))
+
+// NOTE: ถ้ามี getter orders.byIdMap ใน store ให้ใช้แทน เพื่อประสิทธิภาพ
 const palletOrders = computed<OrderRow[]>(() => {
   const p = pallet.value
   if (!p) return []
-  const index = new Map(orders.orders.map(o => [o.orderId, o]))
-  return p.orderIds.map(id => index.get(id)).filter(Boolean) as OrderRow[]
+  const index = new Map(orders.orders.map(o => [String(o.orderId), o]))
+  return p.orderIds.map(id => index.get(String(id))).filter(Boolean) as OrderRow[]
 })
 
-/** ✅ เพิ่ม: ใช้ transporter ตัวแรกจากออเดอร์ใน pallet เป็น fallback ให้ Header */
+/** ใช้ transporter ตัวแรกจากออเดอร์เป็น fallback ของ header */
 const fallbackTransporter = computed(() =>
   palletOrders.value.map(o => (o.transporter || '').trim()).find(Boolean) || ''
 )
 
+const maxWeight = computed(() => {
+  const raw = pallet.value?.maxWeightKg ?? 1000
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : 1000
+})
 const totalWeight = computed(() => palletOrders.value.reduce((s, o) => s + (Number(o.weightKg) || 0), 0))
-const maxWeight = computed(() => pallet.value?.maxWeightKg ?? 1000)
 const overWeight = computed(() => totalWeight.value > maxWeight.value)
-const progress = computed(() => Math.min(100, Math.round((totalWeight.value / maxWeight.value) * 100 || 0)))
+const progress = computed(() => {
+  const pct = (totalWeight.value / maxWeight.value) * 100
+  const safe = Number.isFinite(pct) ? pct : 0
+  return Math.min(100, Math.max(0, Math.round(safe)))
+})
 
-// selection
+// selection (แก้บั๊ก: reassign new Set เสมอ)
 const selectedIds = ref<Set<string>>(new Set())
 function setSelected(s: Set<string>) { selectedIds.value = new Set(s) }
-const allChecked = computed(() => palletOrders.value.length > 0 && palletOrders.value.every(r => selectedIds.value.has(r.orderId)))
-function toggleRow(id: string) { const s = new Set(selectedIds.value); s.has(id) ? s.delete(id) : s.add(id); setSelected(s) }
-function toggleAll() { allChecked.value ? setSelected(new Set()) : setSelected(new Set(palletOrders.value.map(r => r.orderId))) }
+const allChecked = computed(
+  () => palletOrders.value.length > 0 && palletOrders.value.every(r => selectedIds.value.has(String(r.orderId)))
+)
+function toggleRow(id: string) {
+  const next = new Set(selectedIds.value)
+  next.has(id) ? next.delete(id) : next.add(id)
+  setSelected(next)
+}
+function toggleAll() {
+  const all = palletOrders.value.map(r => String(r.orderId))
+  const next = allChecked.value ? new Set<string>() : new Set(all)
+  setSelected(next)
+}
 
 // dialogs
 const showAddDialog = ref(false)
@@ -63,7 +86,7 @@ const showConfirmRemove = ref(false)
 async function onAddOrders(ids: string[]) {
   if (!pallet.value || ids.length === 0) return
   pallets.addOrders(pallet.value.id, ids)
-  success(`Added ${ids.length} orders`)
+  success(`เพิ่มออเดอร์แล้ว ${ids.length} รายการ`)
 }
 function onRemoveSelected() {
   if (!pallet.value || selectedIds.value.size === 0) return
@@ -75,25 +98,25 @@ function doRemoveSelected() {
   const ids = Array.from(selectedIds.value)
   pallets.removeOrders(p.id, ids)
   setSelected(new Set())
-  success(`Removed ${ids.length} orders`)
+  success(`ลบ ${ids.length} รายการออกจากพาเลทแล้ว`)
 }
 function onMarkShipped() {
   if (!pallet.value) return
-  if (palletOrders.value.length === 0) return warn('Pallet is empty.')
-  if (overWeight.value) return warn('Pallet exceeds max weight.')
+  if (palletOrders.value.length === 0) return warn('พาเลทยังว่างอยู่')
+  if (overWeight.value) return warn('น้ำหนักรวมเกิน Max Weight')
   showConfirmShip.value = true
 }
 function doMarkShipped() {
   const p = pallet.value
   if (!p) return
   pallets.markShipped(p.id)
-  success('Pallet marked as shipped')
+  success('ทำเครื่องหมายพาเลทเป็น Shipped แล้ว')
 }
 function onReopen() {
   const p = pallet.value
   if (!p) return
   pallets.reopen(p.id)
-  success('Pallet reopened')
+  success('เปิดพาเลทอีกครั้งแล้ว')
 }
 
 function openOrderDetail(id: string) {
@@ -102,7 +125,7 @@ function openOrderDetail(id: string) {
 
 // shortcuts
 useShortcuts({
-  onSelectAll: () => setSelected(new Set(palletOrders.value.map(o => o.orderId))),
+  onSelectAll: () => setSelected(new Set(palletOrders.value.map(o => String(o.orderId)))),
   onDelete: () => onRemoveSelected(),
   onEscape: () => setSelected(new Set()),
 })
@@ -114,7 +137,7 @@ useShortcuts({
       <h1 class="text-xl font-bold text-slate-800">Pallet #{{ palletId }}</h1>
       <div class="flex items-center gap-2">
         <button
-          class="btn bg-red-500 text-white hover:bg-red-600"
+          class="btn bg-rose-500 text-white hover:bg-rose-600"
           :disabled="!pallet || pallet.status==='Shipped' || selectedIds.size===0"
           title="Remove selected from pallet"
           @click="onRemoveSelected">
@@ -128,13 +151,17 @@ useShortcuts({
           @click="onMarkShipped">
           Mark Shipped
         </button>
-        <button v-else class="btn bg-green-500 text-white hover:bg-green-600" @click="onReopen" title="Reopen pallet">
+        <button
+          v-else
+          class="btn bg-green-500 text-white hover:bg-green-600"
+          @click="onReopen"
+          title="Reopen pallet">
           Reopen
         </button>
       </div>
     </div>
 
-    <!-- ✅ ส่ง fallbackTransporter เข้า Header -->
+    <!-- Header info -->
     <PalletHeaderInfo
       v-if="pallet"
       :pallet="pallet"
@@ -144,6 +171,7 @@ useShortcuts({
       :fallback-transporter="fallbackTransporter"
     />
 
+    <!-- Progress -->
     <div class="flex items-center gap-3">
       <div class="w-80 max-w-full">
         <ProgressBar :value="progress" />
@@ -154,11 +182,12 @@ useShortcuts({
       </div>
     </div>
 
+    <!-- Table -->
     <div class="card p-0 rounded-lg overflow-hidden pallet-table">
       <div class="card-body p-0">
         <div class="max-h-[65vh] overflow-auto">
           <table class="table table-fixed w-full">
-            <thead class="thead sticky top-0 z-20 bg-white">
+            <thead class="thead sticky top-0 z-20 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
               <tr>
                 <th class="th w-10"><input type="checkbox" :checked="allChecked" @change="toggleAll" /></th>
                 <th class="th">Order</th>
@@ -178,23 +207,22 @@ useShortcuts({
                 :class="[
                   'tr row-bg',
                   i % 2 === 0 ? 'zebra-odd' : 'zebra-even',
-                  selectedIds.has(r.orderId) && 'is-selected'
+                  selectedIds.has(String(r.orderId)) && 'is-selected'
                 ]">
                 <td class="td">
-                  <input type="checkbox" :checked="selectedIds.has(r.orderId)" @change="toggleRow(r.orderId)" />
+                  <input type="checkbox" :checked="selectedIds.has(String(r.orderId))" @change="toggleRow(String(r.orderId))" />
                 </td>
-                <td class="td font-semibold cursor-pointer hover:underline" @click="openOrderDetail(r.orderId)">#{{ r.orderId }}</td>
+                <td class="td font-semibold cursor-pointer hover:underline" @click="openOrderDetail(String(r.orderId))">#{{ r.orderId }}</td>
                 <td class="td">{{ r.customer || '—' }}</td>
                 <td class="td">
                   <span :class="r.status === 'Pending' ? 'badge-amber' : 'badge-green'">{{ r.status }}</span>
                 </td>
-                <!-- ✅ fallback ที่คอลัมน์ด้วย: ใช้ของออเดอร์ก่อน ถ้าไม่มีให้ใช้ของ pallet -->
                 <td class="td">{{ r.transporter || pallet?.transporter || '—' }}</td>
                 <td class="td">{{ r.parcelNo || '—' }}</td>
                 <td class="td">{{ r.deliveryDate || '—' }}</td>
                 <td class="td sticky right-0 sticky-action">
                   <div class="flex items-center justify-end gap-2 flex-nowrap whitespace-nowrap">
-                    <button class="btn btn-ghost btn-sm" @click="openOrderDetail(r.orderId)">View</button>
+                    <button class="btn btn-ghost btn-sm" @click="openOrderDetail(String(r.orderId))">View</button>
                   </div>
                 </td>
               </tr>
@@ -229,8 +257,6 @@ useShortcuts({
           </table>
         </div>
       </div>
-
-      <!-- footer hint เดิมถูกลบตามที่คุย -->
     </div>
 
     <!-- dialogs -->
@@ -260,30 +286,92 @@ useShortcuts({
 </template>
 
 <style scoped>
-/* unify row background for sticky cells via --row-bg */
+/* ================================
+   TABLE COLOR SYSTEM & VERTICAL LINE FIX
+   ================================ */
+
+/* ให้ทุกแถวมีพื้นหลังเดียว (ใช้ var) เพื่อ sync กับเซลล์ sticky */
 tr.row-bg { --row-bg: #ffffff; }
 tr.row-bg.zebra-even { --row-bg: #f8fafc; }  /* slate-50 */
-tr.row-bg.zebra-odd  { --row-bg: #ffffff; }
+tr.row-bg.zebra-odd  { --row-bg: #ffffff; }  /* white */
 tr.row-bg.is-selected { --row-bg: #eff6ff; } /* blue-50 */
 tr.row-bg:hover { --row-bg: #f1f5f9; }       /* slate-100 */
-.td.sticky-action { background: var(--row-bg) !important; }
 
-/* kill vertical dividers from theme (deep) */
+/* บังคับพื้นหลังทุก td เท่ากับแถว ลดรอยต่อ/เส้นผี */
+:deep(.pallet-table .tr .td) {
+  background: var(--row-bg);
+  background-clip: padding-box;
+}
+
+/* ลบเส้นแนวตั้งจากธีม (border/box-shadow/pseudo-elements) */
 :deep(.pallet-table .table th),
 :deep(.pallet-table .table td) {
-  border-left-width: 0 !important;
-  border-right-width: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
 }
-:deep(.pallet-table .table thead th) { border-bottom: 1px solid rgba(15,23,42,.12) !important; }
-:deep(.pallet-table .table tbody td) { border-bottom: 1px solid rgba(15,23,42,.12) !important; }
 :deep(.pallet-table .table thead th::before),
 :deep(.pallet-table .table thead th::after),
 :deep(.pallet-table .table tbody td::before),
 :deep(.pallet-table .table tbody td::after) {
-  content: none !important; border: 0 !important; box-shadow: none !important;
+  content: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
+/* ปิด utility divide-x ทุกรูปแบบ */
 :deep(.pallet-table .divide-x > * + *),
 :deep(.pallet-table [class*="divide-x"] > * + *) { border-left-width: 0 !important; }
-:deep(.pallet-table .divide-y > * + *),
-:deep(.pallet-table [class*="divide-y"] > * + *) { border-top-width: 0 !important; }
+
+/* Sticky action ใช้พื้นหลังตามแถว และเอาเส้นคั่นซ้ายออก */
+.td.sticky-action {
+  background: var(--row-bg) !important;
+  position: sticky;
+  right: 0;
+  z-index: 10; /* thead ใช้ z-20 */
+  box-shadow: none !important; /* << เอาเส้นกลางออก */
+}
+
+/* Thead: พื้นขาวโปร่ง + เส้นขอบล่าง */
+:deep(.pallet-table .table thead) {
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: saturate(180%) blur(4px);
+}
+:deep(.pallet-table .table thead th) {
+  border-bottom: 1px solid rgba(15,23,42,.12) !important; /* slate border */
+  color: rgb(100 116 139); /* slate-500 */
+}
+
+/* เส้นคั่นแนวนอนของ tbody */
+:deep(.pallet-table .table tbody td) {
+  border-bottom: 1px solid rgba(15,23,42,.10) !important;
+}
+
+/* ปิดเส้น/เงาพิเศษอื่น ๆ จากธีม */
+:deep(.pallet-table .table thead th::before),
+:deep(.pallet-table .table thead th::after),
+:deep(.pallet-table .table tbody td::before),
+:deep(.pallet-table .table tbody td::after) {
+  content: none !important;
+  box-shadow: none !important;
+}
+
+/* spacing/typography */
+:deep(.pallet-table .thead .th) { padding: 8px 12px; font-weight: 600; }
+:deep(.pallet-table .tr .td)    { padding: 8px 12px; }
+
+/* badges */
+.badge-amber { background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; }
+.badge-green { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
+
+/* buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; padding: 6px 12px; font-size: 0.875rem; font-weight: 500; transition: .15s; }
+.btn-sm { padding: 4px 10px; font-size: 0.8125rem; }
+.btn-primary { background: #4f46e5; color: #fff; }
+.btn-primary:hover { background: #4338ca; }
+.btn-ghost { color: #0f172a; }
+.btn-ghost:hover { background: #f1f5f9; }
+
+/* ลดเส้นผีจาก sub-pixel บางเบราว์เซอร์ */
+:deep(.pallet-table .table) { border-collapse: separate; border-spacing: 0; }
+:deep(.pallet-table .max-h-\[65vh\]) { backface-visibility: hidden; transform: translateZ(0); }
 </style>

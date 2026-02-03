@@ -5,6 +5,7 @@ import { usePalletsStore } from '@/stores/pallets'
 import { exportPalletLabels } from '@/utils/labels'
 import { useToast } from '@/composables/useToast'
 import EmptyState from '@/components/shared/EmptyState.vue'
+import ProgressBar from '@/components/pallets/ProgressBar.vue'
 
 const s = usePalletsStore()
 const router = useRouter()
@@ -17,8 +18,16 @@ function openPallet(id: string) {
 }
 
 function split(id: string) {
-  s.splitPalletOverMax(id)
-  success(`Split: ${id}`)
+  const moved = s.splitPalletOverMax(id)
+  if (moved > 0) {
+    success(`Split ${id} → ย้าย ${moved} แถวไปยังพาเลทย่อยแล้ว`)
+  } else {
+    const p = s.palletsSummary.find(x => x.pallet === id)
+    if (!p) return warn('ไม่พบพาเลทนี้')
+    if (p.status === 'Shipped') return warn('พาเลทถูกล็อก (Shipped)')
+    if (p.weightKg <= p.maxKg) return warn('พาเลทไม่เกิน Max ไม่สามารถ Split ได้')
+    warn('ไม่สามารถ Split พาเลทได้')
+  }
 }
 
 async function exportLabels() {
@@ -35,14 +44,15 @@ function fmtDate(iso?: string) {
 }
 
 function badgeClass(status: string) {
-  if (status === 'Shipped') return 'badge-green'
-  if (status === 'Packed') return 'badge-indigo'
+  // Packed = เขียว (เหมือน Shipped), Open = เหลือง
+  if (status === 'Shipped' || status === 'Packed') return 'badge-green'
   return 'badge-amber'
 }
 
 function progressPct(weight: number, max: number) {
-  if (!max) return 0
-  return Math.min(100, Math.round((weight / max) * 100))
+  if (!Number.isFinite(max) || max <= 0) return 0
+  const pct = (Number(weight) / Number(max)) * 100
+  return Math.min(100, Math.max(0, Math.round(Number.isFinite(pct) ? pct : 0)))
 }
 </script>
 
@@ -94,7 +104,7 @@ function progressPct(weight: number, max: number) {
             </td>
 
             <td class="px-3 py-2">
-              <span :class="badgeClass(p.status)">{{ p.status }}</span>
+              <span class="badge" :class="badgeClass(p.status)">{{ p.status }}</span>
             </td>
 
             <td class="px-3 py-2 text-slate-700">{{ p.lines }}</td>
@@ -102,28 +112,24 @@ function progressPct(weight: number, max: number) {
             <td class="px-3 py-2">
               <div class="flex items-center gap-2">
                 <span :class="p.warn ? 'text-rose-600 font-semibold' : 'text-slate-800'">
-                  {{ p.weightKg.toFixed(2) }}
+                  {{ Number(p.weightKg).toFixed(2) }}
                 </span>
-                <span class="text-slate-400">/ {{ p.maxKg.toFixed(0) }}</span>
+                <span class="text-slate-400">/ {{ Number(p.maxKg).toFixed(0) }}</span>
               </div>
             </td>
 
             <td class="px-3 py-2">
               <div class="w-40 max-w-full">
-                <div class="w-full h-2 bg-slate-200 rounded">
-                  <div
-                    class="h-2 rounded transition-all"
-                    :class="p.warn ? 'bg-rose-500' : 'bg-emerald-500'"
-                    :style="{ width: progressPct(p.weightKg, p.maxKg) + '%' }"
-                  />
-                </div>
+                <ProgressBar :value="progressPct(p.weightKg, p.maxKg)" :danger="p.warn" />
                 <div class="text-xs text-slate-500 mt-1">
                   {{ progressPct(p.weightKg, p.maxKg) }}%
                 </div>
               </div>
             </td>
 
-            <td class="px-3 py-2 text-sm text-slate-600">{{ fmtDate(p.updatedAt) }}</td>
+            <td class="px-3 py-2 text-sm text-slate-600">
+              {{ fmtDate(p.updatedAt) }}
+            </td>
 
             <td class="px-3 py-2">
               <div class="flex items-center gap-2 flex-wrap">
@@ -134,8 +140,8 @@ function progressPct(weight: number, max: number) {
                 <button
                   class="px-3 py-1.5 border rounded bg-white hover:bg-gray-50"
                   @click="split(p.pallet)"
-                  :disabled="!p.warn || p.status === 'Shipped'"
-                  :title="p.status==='Shipped' ? 'Shipped pallets are locked' : (!p.warn ? 'Not over max' : 'Split pallet')"
+                  :disabled="p.status === 'Shipped' || p.weightKg <= p.maxKg"
+                  :title="p.weightKg <= p.maxKg ? 'Not over max' : 'Split pallet'"
                 >
                   Split
                 </button>

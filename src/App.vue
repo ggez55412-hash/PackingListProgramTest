@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import Sidebar from '@/components/Sidebar.vue'
 import { RouterView } from 'vue-router'
-// (ตัวเลือก) ถ้าต้องการ Toast ทั้งระบบ ให้ uncomment 2 บรรทัดถัดไป แล้วเพิ่ม <ToastHost /> ด้านล่าง
-// import ToastHost from '@/components/ToastHost.vue'
+import ToastHost from '@/components/ToastHost.vue'
 </script>
 
 <template>
@@ -37,5 +36,5 @@ import { RouterView } from 'vue-router'
     </main>
   </div>
 
-  <!-- <ToastHost /> -->
+  <ToastHost />
 </template>

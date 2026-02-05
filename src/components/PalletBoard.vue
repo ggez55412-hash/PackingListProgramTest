@@ -1,38 +1,118 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePalletsStore } from '@/stores/pallets'
 import { exportPalletLabels } from '@/utils/labels'
+import { toCSV } from '@/utils/csv'
 import { useToast } from '@/composables/useToast'
 import EmptyState from '@/components/shared/EmptyState.vue'
-import ProgressBar from '@/components/pallets/ProgressBar.vue'
 
 const s = usePalletsStore()
 const router = useRouter()
-const { success, warn } = useToast()
+const { success, warn, info } = useToast()
 
-const hasPallets = computed(() => s.palletsSummary.length > 0)
+/* =========================
+   Filters / Toggles (UI only)
+   ========================= */
+const statusFilter = ref<'ALL' | 'Open' | 'Packed' | 'Shipped'>('ALL')
+const onlyOver = ref(false)
+const hideShipped = ref(false) // Archive Shipped (UI filter)
 
+/* =========================
+   Derived lists (filtered)
+   ========================= */
+const rawList = computed(() => s.palletsSummary ?? [])
+const listAfterStatus = computed(() => {
+  if (statusFilter.value === 'ALL') return rawList.value
+  return rawList.value.filter(p => p.status === statusFilter.value)
+})
+const listAfterOver = computed(() => {
+  return onlyOver.value ? listAfterStatus.value.filter(p => p.warn) : listAfterStatus.value
+})
+const listAfterArchive = computed(() => {
+  return hideShipped.value ? listAfterOver.value.filter(p => p.status !== 'Shipped') : listAfterOver.value
+})
+const viewList = computed(() => listAfterArchive.value)
+
+const hasPallets = computed<boolean>(() => (viewList.value?.length ?? 0) > 0)
+const shippedCount = computed(() => rawList.value.filter(p => p.status === 'Shipped').length)
+
+/* =========================
+   Row-level actions
+   ========================= */
 function openPallet(id: string) {
   router.push({ name: 'pallet-detail', params: { id } })
 }
+function canSplit(p: { warn: boolean; status: string }) {
+  return p.warn && p.status !== 'Shipped'
+}
+function canPack(p: { status: string; lines: number }) {
+  return p.status !== 'Shipped' && p.status !== 'Packed' && p.lines > 0
+}
 
-function split(id: string) {
-  const moved = s.splitPalletOverMax(id)
-  if (moved > 0) {
-    success(`Split ${id} → ย้าย ${moved} แถวไปยังพาเลทย่อยแล้ว`)
-  } else {
-    const p = s.palletsSummary.find(x => x.pallet === id)
-    if (!p) return warn('ไม่พบพาเลทนี้')
-    if (p.status === 'Shipped') return warn('พาเลทถูกล็อก (Shipped)')
-    if (p.weightKg <= p.maxKg) return warn('พาเลทไม่เกิน Max ไม่สามารถ Split ได้')
-    warn('ไม่สามารถ Split พาเลทได้')
+/* =========================
+   Top actions (kept as-is)
+   ========================= */
+const newPalletId = ref('')
+function createPallet() {
+  const id = newPalletId.value.trim()
+  if (!id) { warn('กรุณากรอก Pallet ID'); return }
+  s.setMaxWeight(id, s.palletMaxKg) // ensure meta
+  newPalletId.value = ''
+  success(`สร้างพาเลตใหม่ #${id}`)
+}
+
+const assignTargetId = ref('')
+const isAssigning = ref(false)
+async function bulkAssignUnassigned() {
+  const pid = assignTargetId.value.trim()
+  if (!pid) { warn('กรุณาเลือก/กรอก Pallet ID ปลายทาง'); return }
+  if (s.unassignedRows.length === 0) { info('ไม่มีแถวที่ยังไม่อยู่พาเลต'); return }
+
+  try {
+    isAssigning.value = true
+    s.setMaxWeight(pid, s.palletMaxKg) // ensure meta exists
+    let moved = 0
+    for (const r of s.unassignedRows) {
+      ;(r as any)['Pallet Number'] = pid
+      moved++
+    }
+    s.bulkFix()
+    success(`Assign แถวที่ยังไม่อยู่พาเลตแล้ว ${moved} รายการ → #${pid}`)
+  } finally {
+    isAssigning.value = false
   }
 }
 
+function toggleArchiveShipped() {
+  hideShipped.value = !hideShipped.value
+  info(hideShipped.value ? 'ซ่อนพาเลตที่ Shipped แล้ว' : 'แสดงพาเลตที่ Shipped')
+}
+
+function exportBoardCsv() {
+  const data = viewList.value.map(p => ({
+    Pallet: p.pallet,
+    Status: p.status,
+    Lines: p.lines,
+    WeightKg: p.weightKg.toFixed(2),
+    MaxKg: p.maxKg,
+    ProgressPct: Math.min(100, Math.round((p.weightKg / (p.maxKg || 1)) * 100)),
+    UpdatedAt: p.updatedAt ?? '',
+  }))
+  if (!data.length) { info('ไม่มีข้อมูลให้ส่งออก'); return }
+  const csv = toCSV(data)
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = 'pallets-board.csv'
+  a.click()
+  URL.revokeObjectURL(a.href)
+  success('ส่งออก CSV สำเร็จ')
+}
+
 async function exportLabels() {
-  if (!hasPallets.value) return warn('No pallets to export.')
-  await exportPalletLabels(s.palletsSummary)
+  if (!hasPallets.value) { warn('No pallets to export.'); return }
+  await exportPalletLabels(viewList.value)
   success('Exported labels')
 }
 
@@ -42,39 +122,113 @@ function fmtDate(iso?: string) {
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleString()
 }
-
-function badgeClass(status: string) {
-  // Packed = เขียว (เหมือน Shipped), Open = เหลือง
-  if (status === 'Shipped' || status === 'Packed') return 'badge-green'
-  return 'badge-amber'
+function progressPct(weight: number, max: number) {
+  if (!max) return 0
+  const pct = (weight / max) * 100
+  return Math.min(100, Math.round(Number.isFinite(pct) ? pct : 0))
 }
 
-function progressPct(weight: number, max: number) {
-  if (!Number.isFinite(max) || max <= 0) return 0
-  const pct = (Number(weight) / Number(max)) * 100
-  return Math.min(100, Math.max(0, Math.round(Number.isFinite(pct) ? pct : 0)))
+/** 🔖 badge ด้วย utility (รองรับ Packed/Shipped/Open) */
+function statusBadgeClass(status?: string) {
+  if (status === 'Shipped') {
+    return 'inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold bg-emerald-50 text-emerald-700 border-emerald-200'
+  }
+  if (status === 'Packed') {
+    return 'inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold bg-indigo-50 text-indigo-700 border-indigo-200'
+  }
+  // Open/อื่น ๆ → โทน amber
+  return 'inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold bg-amber-50 text-amber-800 border-amber-200'
 }
 </script>
 
 <template>
   <div class="space-y-3">
-    <div class="flex items-center gap-3">
-      <div class="text-sm text-slate-700">Max/Pallet (kg):</div>
-      <input v-model.number="s.palletMaxKg" type="number" min="1" class="w-28 border rounded px-2 py-1" />
+    <!-- Action bar (top) -->
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+      <div class="flex items-center gap-2 flex-wrap">
 
-      <button class="px-3 py-1.5 border rounded bg-white hover:bg-gray-50" @click="exportLabels">
-        Print Labels (PDF)
-      </button>
+        <!-- New Pallet -->
+        <div class="flex items-center gap-2">
+          <input
+            v-model="newPalletId"
+            placeholder="New Pallet ID"
+            class="input w-44"
+          />
+          <button
+            class="px-3 py-1.5 border !border-slate-300 rounded-md !bg-white hover:!bg-slate-50 !text-slate-800 shadow-sm"
+            @click="createPallet"
+            title="Create a new empty pallet"
+          >
+            New Pallet
+          </button>
+        </div>
 
-      <div class="ml-auto text-sm text-slate-500">
-        Unassigned rows: <b>{{ s.unassignedRows.length }}</b>
+        <!-- Bulk Assign Unassigned -->
+        <div class="flex items-center gap-2">
+          <input
+            v-model="assignTargetId"
+            placeholder="Assign to Pallet ID"
+            class="input w-48"
+          />
+          <button
+            class="px-3 py-1.5 border !border-slate-300 rounded-md !bg-white hover:!bg-slate-50 !text-slate-800 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="s.unassignedRows.length === 0 || isAssigning"
+            @click="bulkAssignUnassigned"
+            title="Assign all unassigned rows into a pallet"
+          >
+            {{ isAssigning ? 'Assigning…' : 'Bulk Assign Unassigned' }}
+          </button>
+          <div class="text-sm text-slate-400" v-if="s.unassignedRows.length > 0">
+            Unassigned rows: <b>{{ s.unassignedRows.length }}</b>
+          </div>
+        </div>
+
+        <!-- Archive Shipped (UI Filter) -->
+        <button
+          class="px-3 py-1.5 border !border-slate-300 rounded-md !bg-white hover:!bg-slate-50 !text-slate-800 shadow-sm"
+          @click="toggleArchiveShipped"
+          :title="hideShipped ? 'Show shipped pallets' : 'Hide shipped pallets'"
+        >
+          {{ hideShipped ? 'Show Shipped' : `Archive Shipped (${shippedCount})` }}
+        </button>
+
+        <!-- Export/Print -->
+        <button
+          class="px-3 py-1.5 border !border-slate-300 rounded-md !bg-white hover:!bg-slate-50 !text-slate-800 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="!hasPallets"
+          @click="exportBoardCsv"
+          title="Export current board view to CSV"
+        >
+          Export CSV
+        </button>
+        <button
+          class="px-3 py-1.5 border !border-slate-300 rounded-md !bg-white hover:!bg-slate-50 !text-slate-800 shadow-sm"
+          @click="exportLabels"
+        >
+          Print Labels (PDF)
+        </button>
+
+        <!-- Filters -->
+        <div class="ml-auto flex items-center gap-2">
+          <select v-model="statusFilter" class="select">
+            <option value="ALL">All</option>
+            <option>Open</option>
+            <option>Packed</option>
+            <option>Shipped</option>
+          </select>
+          <label class="inline-flex items-center gap-2 text-sm text-slate-600">
+            <input type="checkbox" v-model="onlyOver" />
+            Only Overweight
+          </label>
+        </div>
       </div>
     </div>
 
+    <!-- Board table -->
     <div v-if="!hasPallets" class="rounded-xl border border-slate-200 bg-white p-6">
       <EmptyState
-        title="No pallets yet"
-        description="Import Excel (.xlsx) first, then pallets will appear here."
+        title="No pallets to show"
+        description="Import or create pallets to start."
       />
     </div>
 
@@ -88,23 +242,24 @@ function progressPct(weight: number, max: number) {
             <th class="px-3 py-3 border-b">Weight (kg)</th>
             <th class="px-3 py-3 border-b">Progress</th>
             <th class="px-3 py-3 border-b">Updated</th>
-            <th class="px-3 py-3 border-b w-64">Action</th>
+            <th class="px-3 py-3 border-b w-[200px]">Action</th>
           </tr>
         </thead>
-
         <tbody>
           <tr
-            v-for="p in s.palletsSummary"
+            v-for="p in viewList"
             :key="p.pallet"
             class="border-b even:bg-slate-50/40 hover:bg-slate-50 transition"
           >
-            <td class="px-3 py-2 font-medium text-slate-800">
-              <button class="hover:underline" @click="openPallet(p.pallet)">{{ p.pallet }}</button>
+            <!-- Pallet text -->
+            <td class="px-3 py-2">
+              <span class="font-semibold text-slate-800">{{ p.pallet }}</span>
               <span v-if="p.warn" class="ml-2 text-rose-600 font-semibold">⚠ Over</span>
             </td>
 
+            <!-- Status badge -->
             <td class="px-3 py-2">
-              <span class="badge" :class="badgeClass(p.status)">{{ p.status }}</span>
+              <span :class="statusBadgeClass(p.status)">{{ p.status }}</span>
             </td>
 
             <td class="px-3 py-2 text-slate-700">{{ p.lines }}</td>
@@ -112,50 +267,60 @@ function progressPct(weight: number, max: number) {
             <td class="px-3 py-2">
               <div class="flex items-center gap-2">
                 <span :class="p.warn ? 'text-rose-600 font-semibold' : 'text-slate-800'">
-                  {{ Number(p.weightKg).toFixed(2) }}
+                  {{ p.weightKg.toFixed(2) }}
                 </span>
-                <span class="text-slate-400">/ {{ Number(p.maxKg).toFixed(0) }}</span>
+                <span class="text-slate-400">/ {{ p.maxKg.toFixed(0) }}</span>
               </div>
             </td>
 
             <td class="px-3 py-2">
               <div class="w-40 max-w-full">
-                <ProgressBar :value="progressPct(p.weightKg, p.maxKg)" :danger="p.warn" />
+                <div class="w-full h-2 bg-slate-200 rounded">
+                  <div
+                    class="h-2 rounded transition-all"
+                    :class="p.warn ? 'bg-rose-500' : 'bg-emerald-500'"
+                    :style="{ width: progressPct(p.weightKg, p.maxKg) + '%' }"
+                  />
+                </div>
                 <div class="text-xs text-slate-500 mt-1">
                   {{ progressPct(p.weightKg, p.maxKg) }}%
                 </div>
               </div>
             </td>
 
-            <td class="px-3 py-2 text-sm text-slate-600">
-              {{ fmtDate(p.updatedAt) }}
-            </td>
+            <td class="px-3 py-2 text-sm text-slate-600">{{ fmtDate(p.updatedAt) }}</td>
 
+            <!-- Action: คง View / Split / Pack (❌ ไม่มี Set Max แล้ว) -->
             <td class="px-3 py-2">
               <div class="flex items-center gap-2 flex-wrap">
-                <button class="px-3 py-1.5 border rounded bg-white hover:bg-gray-50" @click="openPallet(p.pallet)">
+                <button
+                  class="px-3 py-1.5 border border-slate-300 rounded-md bg-white hover:bg-slate-50 text-slate-800"
+                  @click="openPallet(p.pallet)"
+                  title="View pallet detail"
+                >
                   View
                 </button>
 
                 <button
-                  class="px-3 py-1.5 border rounded bg-white hover:bg-gray-50"
-                  @click="split(p.pallet)"
-                  :disabled="p.status === 'Shipped' || p.weightKg <= p.maxKg"
-                  :title="p.weightKg <= p.maxKg ? 'Not over max' : 'Split pallet'"
+                  v-if="canSplit(p)"
+                  class="px-3 py-1.5 border border-slate-300 rounded-md bg-white hover:bg-slate-50 text-slate-800"
+                  @click="s.splitPalletOverMax(p.pallet)"
+                  title="Split pallet (over max)"
                 >
                   Split
                 </button>
 
                 <button
-                  class="px-3 py-1.5 border rounded bg-white hover:bg-gray-50"
-                  @click="s.pack(p.pallet)"
-                  :disabled="p.status === 'Shipped' || p.lines === 0"
+                  class="px-3 py-1.5 border border-slate-300 rounded-md bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  :disabled="!canPack(p)"
+                  @click="canPack(p) && s.pack(p.pallet)"
                   title="Mark as Packed"
                 >
                   Pack
                 </button>
               </div>
             </td>
+
           </tr>
         </tbody>
       </table>

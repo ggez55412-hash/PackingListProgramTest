@@ -22,6 +22,5 @@
       Pallets
     </RouterLink>
 
-    <div class="pt-2 pl-6 text-slate-400 text-sm">Orders</div>
   </nav>
 </template>

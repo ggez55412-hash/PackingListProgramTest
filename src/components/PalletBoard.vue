@@ -6,6 +6,7 @@ import { exportPalletLabels } from '@/utils/labels'
 import { toCSV } from '@/utils/csv'
 import { useToast } from '@/composables/useToast'
 import EmptyState from '@/components/shared/EmptyState.vue'
+import * as XLSX from "xlsx"
 
 const s = usePalletsStore()
 const router = useRouter()
@@ -89,25 +90,115 @@ function toggleArchiveShipped() {
   info(hideShipped.value ? 'ซ่อนพาเลตที่ Shipped แล้ว' : 'แสดงพาเลตที่ Shipped')
 }
 
-function exportBoardCsv() {
-  const data = viewList.value.map(p => ({
-    Pallet: p.pallet,
-    Status: p.status,
-    Lines: p.lines,
-    WeightKg: p.weightKg.toFixed(2),
-    MaxKg: p.maxKg,
-    ProgressPct: Math.min(100, Math.round((p.weightKg / (p.maxKg || 1)) * 100)),
-    UpdatedAt: p.updatedAt ?? '',
+function exportBoardExcel() {
+  if (!hasPallets.value) {
+    info("ไม่มีข้อมูลให้ส่งออก")
+    return
+  }
+
+  /* -------------------------------
+     Sheet 1 : Pallet Summary
+  --------------------------------*/
+  const palletSheet = viewList.value.map(p => ({
+    Pallet      : p.pallet,
+    Status      : p.status,
+    Lines       : p.lines,
+    WeightKg    : Number(p.weightKg.toFixed(2)),
+    MaxKg       : p.maxKg,
+    ProgressPct : Math.min(100, Math.round((p.weightKg / (p.maxKg || 1)) * 100)),
+    UpdatedAt   : p.updatedAt ?? "",
   }))
-  if (!data.length) { info('ไม่มีข้อมูลให้ส่งออก'); return }
-  const csv = toCSV(data)
-  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = 'pallets-board.csv'
-  a.click()
-  URL.revokeObjectURL(a.href)
-  success('ส่งออก CSV สำเร็จ')
+
+  /* -------------------------------
+     Sheet 2 : Orders (SAFE TYPE)
+  --------------------------------*/
+  const orderSheet: any[] = []
+  for (const r of s.rows) {
+    const palletId =
+      (r as any)["Pallet Number"] ??
+      (r as any).PalletNumber ??
+      (r as any).pallet ??
+      (r as any).Pallet ?? ""
+
+    orderSheet.push({
+      Pallet      : palletId,
+      OrderID     : (r as any).orderId ?? (r as any).OrderId ?? "",
+      Customer    : (r as any).customer ?? "",
+      Status      : (r as any).status ?? "",
+      Transporter : (r as any).transporter ?? "",
+      ParcelNo    : (r as any).parcelNo ?? "",
+      DeliveryDate: (r as any).deliveryDate ?? "",
+      WeightKg    : (r as any).Weight ?? (r as any).weight ?? 0,
+      QTY         : (r as any).QTY ?? 1,
+    })
+  }
+
+  const wb = XLSX.utils.book_new()
+
+  /* -------------------------------
+     Utility: convert + styling
+  --------------------------------*/
+  function toStyledSheet(name: string, data: any[], colWidths: number[], wrapCols: number[] = []) {
+    // ❗ important: remove "origin"
+    const ws = XLSX.utils.json_to_sheet(data)
+
+    const range = XLSX.utils.decode_range(ws["!ref"]!)
+
+    // header style
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: 0, c: C })
+      const cell = ws[addr] || (ws[addr] = { t: "s", v: "" } as any)
+
+      cell.s = {
+        fill: { fgColor: { rgb: "EEF2FF" } },          // header color
+        font: { bold: true, color: { rgb: "111827" } },// darker text
+        alignment: { vertical: "center", horizontal: "center", wrapText: true },
+        border: {
+          top:    { style: "thin", color: { rgb: "CBD5E1" } },
+          bottom: { style: "thin", color: { rgb: "CBD5E1" } },
+          left:   { style: "thin", color: { rgb: "CBD5E1" } },
+          right:  { style: "thin", color: { rgb: "CBD5E1" } },
+        },
+      }
+    }
+
+    // wrap text columns
+    for (let R = 1; R <= range.e.r; R++) {
+      for (const col of wrapCols) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: col })
+        const cell = ws[addr]
+        if (!cell) continue
+        cell.s = {
+          ...(cell.s || {}),
+          alignment: { ...(cell.s?.alignment || {}), wrapText: true },
+        }
+      }
+    }
+
+    // column width
+    ws["!cols"] = colWidths.map(w => ({ wch: w }))
+
+    // freeze top row
+    ;(ws as any)["!freeze"] = { rows: 1, columns: 0 }
+
+    XLSX.utils.book_append_sheet(wb, ws, name)
+  }
+
+  /* -------------------------------
+     Build both sheets
+  --------------------------------*/
+  toStyledSheet("Pallets", palletSheet,
+    /* widths */ [18, 12, 8, 12, 10, 12, 26],
+    /* wrapCols */ [6] // UpdatedAt
+  )
+
+  toStyledSheet("Orders", orderSheet,
+    /* widths */ [16, 18, 22, 12, 16, 16, 14, 10, 8],
+    /* wrapCols */ [2, 3, 4, 5] // Customer, Transporter, ParcelNo, DeliveryDate
+  )
+
+  XLSX.writeFile(wb, "Pallets_with_Orders.xlsx")
+  success("Export Excel สำเร็จ (พร้อม format)")
 }
 
 async function exportLabels() {
@@ -193,14 +284,16 @@ function statusBadgeClass(status?: string) {
         </button>
 
         <!-- Export/Print -->
-        <button
-          class="px-3 py-1.5 border !border-slate-300 rounded-md !bg-white hover:!bg-slate-50 !text-slate-800 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="!hasPallets"
-          @click="exportBoardCsv"
-          title="Export current board view to CSV"
-        >
-          Export CSV
-        </button>
+        
+<button
+  class="px-3 py-1.5 border border-slate-300 rounded-md bg-white hover:bg-slate-50 text-slate-800 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+  :disabled="!hasPallets"
+  @click="exportBoardExcel"
+  title="Export current board view to Excel (styled)"
+>
+  Export Excel
+</button>
+
         <button
           class="px-3 py-1.5 border !border-slate-300 rounded-md !bg-white hover:!bg-slate-50 !text-slate-800 shadow-sm"
           @click="exportLabels"

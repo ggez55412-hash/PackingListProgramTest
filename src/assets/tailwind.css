@@ -98,4 +98,5 @@
   .tr {
     @apply even:bg-slate-50/40 hover:bg-slate-50 transition;
   }
+  
 }

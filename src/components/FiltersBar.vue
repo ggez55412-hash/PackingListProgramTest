@@ -113,19 +113,5 @@ function onExport(): void {
         <option v-for="t in props.transporters" :key="t" :value="t">{{ t }}</option>
       </select>
     </div>
-
-    <div class="ml-auto flex items-center gap-2">
-      <input type="file" ref="fileEl" class="hidden" accept=".csv,text/csv" @change="onFile" />
-      <button class="btn btn-primary" :disabled="isImporting" @click="browseCsv">
-        {{ isImporting ? 'กำลังนำเข้า...' : 'Import CSV' }}
-      </button>
-      <button class="btn bg-green-500 text-white hover:bg-green-600" :disabled="isExporting || !props.exportRows?.length" @click="onExport">
-        {{ isExporting ? 'กำลังส่งออก...' : 'Export CSV' }}
-      </button>
-    </div>
-
-    <p v-if="importError" class="w-full text-sm text-red-600 mt-1">
-      {{ importError }}
-    </p>
   </div>
 </template>

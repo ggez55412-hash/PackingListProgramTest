@@ -262,7 +262,7 @@ function onWeightPaste(e: ClipboardEvent, realIndex: number) {
 
 <template>
   <section class="space-y-4">
-    <div class="text-xl font-bold text-slate-700">Shipping Management Dashboard</div>
+    <div class="text-xl font-bold text-slate-700">Shipping Management</div>
 
     <!-- Summary chips -->
     <div class="flex flex-wrap gap-3">

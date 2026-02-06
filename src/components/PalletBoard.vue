@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePalletsStore } from '@/stores/pallets'
 import { exportPalletLabels } from '@/utils/labels'
-import { toCSV } from '@/utils/csv'
 import { useToast } from '@/composables/useToast'
 import EmptyState from '@/components/shared/EmptyState.vue'
 import * as XLSX from "xlsx"
@@ -13,92 +12,93 @@ const router = useRouter()
 const { success, warn, info } = useToast()
 
 /* =========================
-   Filters / Toggles (UI only)
+   Filters
    ========================= */
 const statusFilter = ref<'ALL' | 'Open' | 'Packed' | 'Shipped'>('ALL')
 const onlyOver = ref(false)
-const hideShipped = ref(false) // Archive Shipped (UI filter)
+const hideShipped = ref(false)
 
 /* =========================
-   Derived lists (filtered)
+   Derived lists
    ========================= */
 const rawList = computed(() => s.palletsSummary ?? [])
-const listAfterStatus = computed(() => {
-  if (statusFilter.value === 'ALL') return rawList.value
-  return rawList.value.filter(p => p.status === statusFilter.value)
-})
-const listAfterOver = computed(() => {
-  return onlyOver.value ? listAfterStatus.value.filter(p => p.warn) : listAfterStatus.value
-})
-const listAfterArchive = computed(() => {
-  return hideShipped.value ? listAfterOver.value.filter(p => p.status !== 'Shipped') : listAfterOver.value
-})
+const listAfterStatus = computed(() =>
+  statusFilter.value === 'ALL'
+    ? rawList.value
+    : rawList.value.filter(p => p.status === statusFilter.value)
+)
+const listAfterOver = computed(() =>
+  onlyOver.value ? listAfterStatus.value.filter(p => p.warn) : listAfterStatus.value
+)
+const listAfterArchive = computed(() =>
+  hideShipped.value ? listAfterOver.value.filter(p => p.status !== 'Shipped') : listAfterOver.value
+)
 const viewList = computed(() => listAfterArchive.value)
 
-const hasPallets = computed<boolean>(() => (viewList.value?.length ?? 0) > 0)
+const hasPallets = computed(() => (viewList.value?.length ?? 0) > 0)
 const shippedCount = computed(() => rawList.value.filter(p => p.status === 'Shipped').length)
 
 /* =========================
-   Row-level actions
+   Actions
    ========================= */
 function openPallet(id: string) {
   router.push({ name: 'pallet-detail', params: { id } })
 }
-function canSplit(p: { warn: boolean; status: string }) {
+function canSplit(p: any) {
   return p.warn && p.status !== 'Shipped'
 }
-function canPack(p: { status: string; lines: number }) {
+function canPack(p: any) {
   return p.status !== 'Shipped' && p.status !== 'Packed' && p.lines > 0
 }
 
 /* =========================
-   Top actions (kept as-is)
+   Create / Assign
    ========================= */
 const newPalletId = ref('')
 function createPallet() {
   const id = newPalletId.value.trim()
-  if (!id) { warn('กรุณากรอก Pallet ID'); return }
-  s.setMaxWeight(id, s.palletMaxKg) // ensure meta
-  newPalletId.value = ''
+  if (!id) return warn("กรุณากรอก Pallet ID")
+  s.setMaxWeight(id, s.palletMaxKg)
   success(`สร้างพาเลตใหม่ #${id}`)
+  newPalletId.value = ''
 }
 
 const assignTargetId = ref('')
 const isAssigning = ref(false)
 async function bulkAssignUnassigned() {
   const pid = assignTargetId.value.trim()
-  if (!pid) { warn('กรุณาเลือก/กรอก Pallet ID ปลายทาง'); return }
-  if (s.unassignedRows.length === 0) { info('ไม่มีแถวที่ยังไม่อยู่พาเลต'); return }
-
+  if (!pid) return warn("เลือก Pallet ID ปลายทาง")
+  if (s.unassignedRows.length === 0) return info("ไม่มีแถวที่ยังไม่อยู่พาเลต")
   try {
     isAssigning.value = true
-    s.setMaxWeight(pid, s.palletMaxKg) // ensure meta exists
+    s.setMaxWeight(pid, s.palletMaxKg)
     let moved = 0
     for (const r of s.unassignedRows) {
-      ;(r as any)['Pallet Number'] = pid
+      ;(r as any)["Pallet Number"] = pid
       moved++
     }
     s.bulkFix()
-    success(`Assign แถวที่ยังไม่อยู่พาเลตแล้ว ${moved} รายการ → #${pid}`)
+    success(`Assign แล้ว ${moved} แถว → #${pid}`)
   } finally {
     isAssigning.value = false
   }
 }
 
+/* =========================
+   Archive
+   ========================= */
 function toggleArchiveShipped() {
   hideShipped.value = !hideShipped.value
-  info(hideShipped.value ? 'ซ่อนพาเลตที่ Shipped แล้ว' : 'แสดงพาเลตที่ Shipped')
+  info(hideShipped.value ? "ซ่อน Shipped แล้ว" : "แสดง Shipped")
 }
 
+/* =========================
+   Export Excel (Styled)
+   ========================= */
 function exportBoardExcel() {
-  if (!hasPallets.value) {
-    info("ไม่มีข้อมูลให้ส่งออก")
-    return
-  }
+  if (!hasPallets.value) return info("ไม่มีข้อมูลให้ส่งออก")
 
-  /* -------------------------------
-     Sheet 1 : Pallet Summary
-  --------------------------------*/
+  // Sheet 1: Pallet summary
   const palletSheet = viewList.value.map(p => ({
     Pallet      : p.pallet,
     Status      : p.status,
@@ -109,9 +109,7 @@ function exportBoardExcel() {
     UpdatedAt   : p.updatedAt ?? "",
   }))
 
-  /* -------------------------------
-     Sheet 2 : Orders (SAFE TYPE)
-  --------------------------------*/
+  // Sheet 2: Orders rows
   const orderSheet: any[] = []
   for (const r of s.rows) {
     const palletId =
@@ -133,196 +131,160 @@ function exportBoardExcel() {
     })
   }
 
+  // Workbook
   const wb = XLSX.utils.book_new()
 
-  /* -------------------------------
-     Utility: convert + styling
-  --------------------------------*/
-  function toStyledSheet(name: string, data: any[], colWidths: number[], wrapCols: number[] = []) {
-    // ❗ important: remove "origin"
-    const ws = XLSX.utils.json_to_sheet(data)
+  /* Utility: build sheet + apply style */
+  function toSheet(name: string, rows: any[], width: number[], wrap: number[]) {
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const ref = ws["!ref"]
+    if (ref) {
+      const range = XLSX.utils.decode_range(ref)
 
-    const range = XLSX.utils.decode_range(ws["!ref"]!)
-
-    // header style
-    for (let C = range.s.c; C <= range.e.c; C++) {
-      const addr = XLSX.utils.encode_cell({ r: 0, c: C })
-      const cell = ws[addr] || (ws[addr] = { t: "s", v: "" } as any)
-
-      cell.s = {
-        fill: { fgColor: { rgb: "EEF2FF" } },          // header color
-        font: { bold: true, color: { rgb: "111827" } },// darker text
-        alignment: { vertical: "center", horizontal: "center", wrapText: true },
-        border: {
-          top:    { style: "thin", color: { rgb: "CBD5E1" } },
-          bottom: { style: "thin", color: { rgb: "CBD5E1" } },
-          left:   { style: "thin", color: { rgb: "CBD5E1" } },
-          right:  { style: "thin", color: { rgb: "CBD5E1" } },
-        },
-      }
-    }
-
-    // wrap text columns
-    for (let R = 1; R <= range.e.r; R++) {
-      for (const col of wrapCols) {
-        const addr = XLSX.utils.encode_cell({ r: R, c: col })
-        const cell = ws[addr]
-        if (!cell) continue
+      // Header
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const addr = XLSX.utils.encode_cell({ r: 0, c: C })
+        const cell = (ws as any)[addr] || ((ws as any)[addr] = { t: 's', v: '' })
         cell.s = {
-          ...(cell.s || {}),
-          alignment: { ...(cell.s?.alignment || {}), wrapText: true },
+          fill: { fgColor: { rgb: "EEF2FF" } },
+          font: { bold: true, color: { rgb: "111827" } },
+          alignment: { vertical: "center", horizontal: "center", wrapText: true },
+          border: {
+            top:    { style: "thin", color: { rgb: "CBD5E1" } },
+            bottom: { style: "thin", color: { rgb: "CBD5E1" } },
+            left:   { style: "thin", color: { rgb: "CBD5E1" } },
+            right:  { style: "thin", color: { rgb: "CBD5E1" } },
+          },
+        }
+      }
+
+      // Wrap text for certain cols
+      for (let R = 1; R <= range.e.r; R++) {
+        for (const C of wrap) {
+          const addr = XLSX.utils.encode_cell({ r: R, c: C })
+          const cell = (ws as any)[addr]
+          if (cell) {
+            cell.s = {
+              ...(cell.s || {}),
+              alignment: { ...(cell.s?.alignment || {}), wrapText: true }
+            }
+          }
         }
       }
     }
 
-    // column width
-    ws["!cols"] = colWidths.map(w => ({ wch: w }))
-
-    // freeze top row
+    ws["!cols"] = width.map(w => ({ wch: w }))
     ;(ws as any)["!freeze"] = { rows: 1, columns: 0 }
 
     XLSX.utils.book_append_sheet(wb, ws, name)
   }
 
-  /* -------------------------------
-     Build both sheets
-  --------------------------------*/
-  toStyledSheet("Pallets", palletSheet,
-    /* widths */ [18, 12, 8, 12, 10, 12, 26],
-    /* wrapCols */ [6] // UpdatedAt
+  toSheet("Pallets", palletSheet,
+    [16, 12, 8, 12, 10, 12, 24],
+    [6]
   )
 
-  toStyledSheet("Orders", orderSheet,
-    /* widths */ [16, 18, 22, 12, 16, 16, 14, 10, 8],
-    /* wrapCols */ [2, 3, 4, 5] // Customer, Transporter, ParcelNo, DeliveryDate
+  toSheet("Orders", orderSheet,
+    [16, 16, 24, 12, 16, 14, 10, 6],
+    [2,3,4,5]
   )
 
   XLSX.writeFile(wb, "Pallets_with_Orders.xlsx")
-  success("Export Excel สำเร็จ (พร้อม format)")
+  success("Export Excel สำเร็จ")
 }
 
+/* =========================
+   Print Labels
+   ========================= */
 async function exportLabels() {
-  if (!hasPallets.value) { warn('No pallets to export.'); return }
+  if (!hasPallets.value) return warn("No pallets")
   await exportPalletLabels(viewList.value)
-  success('Exported labels')
+  success("Exported labels")
 }
 
+/* =========================
+   Helpers
+   ========================= */
 function fmtDate(iso?: string) {
   if (!iso) return '—'
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleString()
 }
 function progressPct(weight: number, max: number) {
   if (!max) return 0
   const pct = (weight / max) * 100
-  return Math.min(100, Math.round(Number.isFinite(pct) ? pct : 0))
+  return Math.min(100, Math.round(pct))
 }
-
-/** 🔖 badge ด้วย utility (รองรับ Packed/Shipped/Open) */
 function statusBadgeClass(status?: string) {
   if (status === 'Shipped') {
-    return 'inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold bg-emerald-50 text-emerald-700 border-emerald-200'
+    return 'inline-flex px-2 py-0.5 rounded-full border text-xs font-semibold bg-emerald-50 text-emerald-700 border-emerald-200'
   }
   if (status === 'Packed') {
-    return 'inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold bg-indigo-50 text-indigo-700 border-indigo-200'
+    return 'inline-flex px-2 py-0.5 rounded-full border text-xs font-semibold bg-indigo-50 text-indigo-700 border-indigo-200'
   }
-  // Open/อื่น ๆ → โทน amber
-  return 'inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold bg-amber-50 text-amber-800 border-amber-200'
+  return 'inline-flex px-2 py-0.5 rounded-full border text-xs font-semibold bg-amber-50 text-amber-800 border-amber-200'
 }
 </script>
 
 <template>
   <div class="space-y-3">
-    <!-- Action bar (top) -->
-    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-      <div class="flex items-center gap-2 flex-wrap">
 
-        <!-- New Pallet -->
+    <!-- Action Bar (⭐ ใหม่ ดูดีมาก) -->
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div class="flex flex-wrap items-center gap-3">
+
+        <!-- New pallet -->
         <div class="flex items-center gap-2">
-          <input
-            v-model="newPalletId"
-            placeholder="New Pallet ID"
-            class="input w-44"
-          />
-          <button
-            class="px-3 py-1.5 border !border-slate-300 rounded-md !bg-white hover:!bg-slate-50 !text-slate-800 shadow-sm"
-            @click="createPallet"
-            title="Create a new empty pallet"
-          >
-            New Pallet
-          </button>
+          <input v-model="newPalletId" placeholder="New Pallet ID" class="input w-44" />
+          <button class="btn-primary" @click="createPallet">New Pallet</button>
         </div>
 
-        <!-- Bulk Assign Unassigned -->
+        <!-- Assign -->
         <div class="flex items-center gap-2">
-          <input
-            v-model="assignTargetId"
-            placeholder="Assign to Pallet ID"
-            class="input w-48"
-          />
-          <button
-            class="px-3 py-1.5 border !border-slate-300 rounded-md !bg-white hover:!bg-slate-50 !text-slate-800 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            :disabled="s.unassignedRows.length === 0 || isAssigning"
-            @click="bulkAssignUnassigned"
-            title="Assign all unassigned rows into a pallet"
-          >
+          <input v-model="assignTargetId" placeholder="Assign to Pallet ID" class="input w-48" />
+          <button class="btn-primary" :disabled="s.unassignedRows.length===0||isAssigning" @click="bulkAssignUnassigned">
             {{ isAssigning ? 'Assigning…' : 'Bulk Assign Unassigned' }}
           </button>
-          <div class="text-sm text-slate-400" v-if="s.unassignedRows.length > 0">
-            Unassigned rows: <b>{{ s.unassignedRows.length }}</b>
-          </div>
         </div>
 
-        <!-- Archive Shipped (UI Filter) -->
-        <button
-          class="px-3 py-1.5 border !border-slate-300 rounded-md !bg-white hover:!bg-slate-50 !text-slate-800 shadow-sm"
-          @click="toggleArchiveShipped"
-          :title="hideShipped ? 'Show shipped pallets' : 'Hide shipped pallets'"
-        >
+        <!-- Archive Shipped -->
+        <button class="btn-normal" @click="toggleArchiveShipped">
           {{ hideShipped ? 'Show Shipped' : `Archive Shipped (${shippedCount})` }}
         </button>
 
-        <!-- Export/Print -->
-        
-<button
-  class="px-3 py-1.5 border border-slate-300 rounded-md bg-white hover:bg-slate-50 text-slate-800 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-  :disabled="!hasPallets"
-  @click="exportBoardExcel"
-  title="Export current board view to Excel (styled)"
->
-  Export Excel
-</button>
+        <!-- Export Excel -->
+        <button class="btn-normal" :disabled="!hasPallets" @click="exportBoardExcel">
+          Export Excel
+        </button>
 
-        <button
-          class="px-3 py-1.5 border !border-slate-300 rounded-md !bg-white hover:!bg-slate-50 !text-slate-800 shadow-sm"
-          @click="exportLabels"
-        >
+        <!-- Print labels -->
+        <button class="btn-normal" @click="exportLabels">
           Print Labels (PDF)
         </button>
 
-        <!-- Filters -->
-        <div class="ml-auto flex items-center gap-2">
-          <select v-model="statusFilter" class="select">
-            <option value="ALL">All</option>
-            <option>Open</option>
-            <option>Packed</option>
-            <option>Shipped</option>
-          </select>
-          <label class="inline-flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" v-model="onlyOver" />
-            Only Overweight
-          </label>
-        </div>
+        <!-- Spacer -->
+        <div class="flex-1"></div>
+
+        <!-- Status filter -->
+        <select v-model="statusFilter" class="input w-32">
+          <option value="ALL">All</option>
+          <option>Open</option>
+          <option>Packed</option>
+          <option>Shipped</option>
+        </select>
+
+        <!-- Only overweight -->
+        <label class="flex items-center gap-2 text-slate-700 text-sm">
+          <input type="checkbox" v-model="onlyOver" />
+          Only Overweight
+        </label>
+
       </div>
     </div>
 
-    <!-- Board table -->
+    <!-- Table -->
     <div v-if="!hasPallets" class="rounded-xl border border-slate-200 bg-white p-6">
-      <EmptyState
-        title="No pallets to show"
-        description="Import or create pallets to start."
-      />
+      <EmptyState title="No pallets to show" description="Import or create pallets to start." />
     </div>
 
     <div v-else class="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
@@ -338,25 +300,21 @@ function statusBadgeClass(status?: string) {
             <th class="px-3 py-3 border-b w-[200px]">Action</th>
           </tr>
         </thead>
+
         <tbody>
           <tr
             v-for="p in viewList"
             :key="p.pallet"
             class="border-b even:bg-slate-50/40 hover:bg-slate-50 transition"
           >
-            <!-- Pallet text -->
-            <td class="px-3 py-2">
-              <span class="font-semibold text-slate-800">{{ p.pallet }}</span>
+            <td class="px-3 py-2 font-semibold text-slate-800">
+              {{ p.pallet }}
               <span v-if="p.warn" class="ml-2 text-rose-600 font-semibold">⚠ Over</span>
             </td>
-
-            <!-- Status badge -->
             <td class="px-3 py-2">
               <span :class="statusBadgeClass(p.status)">{{ p.status }}</span>
             </td>
-
-            <td class="px-3 py-2 text-slate-700">{{ p.lines }}</td>
-
+            <td class="px-3 py-2">{{ p.lines }}</td>
             <td class="px-3 py-2">
               <div class="flex items-center gap-2">
                 <span :class="p.warn ? 'text-rose-600 font-semibold' : 'text-slate-800'">
@@ -365,12 +323,11 @@ function statusBadgeClass(status?: string) {
                 <span class="text-slate-400">/ {{ p.maxKg.toFixed(0) }}</span>
               </div>
             </td>
-
             <td class="px-3 py-2">
-              <div class="w-40 max-w-full">
+              <div class="w-40">
                 <div class="w-full h-2 bg-slate-200 rounded">
                   <div
-                    class="h-2 rounded transition-all"
+                    class="h-2 rounded"
                     :class="p.warn ? 'bg-rose-500' : 'bg-emerald-500'"
                     :style="{ width: progressPct(p.weightKg, p.maxKg) + '%' }"
                   />
@@ -380,43 +337,38 @@ function statusBadgeClass(status?: string) {
                 </div>
               </div>
             </td>
-
             <td class="px-3 py-2 text-sm text-slate-600">{{ fmtDate(p.updatedAt) }}</td>
-
-            <!-- Action: คง View / Split / Pack (❌ ไม่มี Set Max แล้ว) -->
             <td class="px-3 py-2">
-              <div class="flex items-center gap-2 flex-wrap">
-                <button
-                  class="px-3 py-1.5 border border-slate-300 rounded-md bg-white hover:bg-slate-50 text-slate-800"
-                  @click="openPallet(p.pallet)"
-                  title="View pallet detail"
-                >
-                  View
-                </button>
-
-                <button
-                  v-if="canSplit(p)"
-                  class="px-3 py-1.5 border border-slate-300 rounded-md bg-white hover:bg-slate-50 text-slate-800"
-                  @click="s.splitPalletOverMax(p.pallet)"
-                  title="Split pallet (over max)"
-                >
-                  Split
-                </button>
-
-                <button
-                  class="px-3 py-1.5 border border-slate-300 rounded-md bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                  :disabled="!canPack(p)"
-                  @click="canPack(p) && s.pack(p.pallet)"
-                  title="Mark as Packed"
-                >
-                  Pack
-                </button>
+              <div class="flex items-center gap-2">
+                <button class="btn-table" @click="openPallet(p.pallet)">View</button>
+                <button v-if="canSplit(p)" class="btn-table" @click="s.splitPalletOverMax(p.pallet)">Split</button>
+                <button class="btn-table" :disabled="!canPack(p)" @click="canPack(p) && s.pack(p.pallet)">Pack</button>
               </div>
             </td>
-
           </tr>
         </tbody>
+
       </table>
     </div>
   </div>
 </template>
+
+<style scoped>
+@reference '../assets/tailwind.css';
+
+/* Inputs */
+.input {
+  @apply px-3 py-2 rounded-lg border border-slate-300 bg-white shadow-sm text-sm focus:ring-2 focus:ring-indigo-400;
+}
+
+/* Buttons */
+.btn-normal {
+  @apply px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 shadow-sm transition;
+}
+.btn-primary {
+  @apply px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm transition border border-indigo-600;
+}
+.btn-table {
+  @apply px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-sm;
+}
+</style>
